@@ -237,23 +237,22 @@ export const participants = [
 ];
 
 // Dicionário de fotos de perfil personalizadas para cada participante (opcional)
-// Para usar imagens locais (Opção 2): salve a imagem na pasta 'public/avatars/'
-// e defina o caminho como "/avatars/nome.extensao" (Ex: "/avatars/cris.jpg")
+// Usamos a API do DiceBear para gerar ilustrações vetoriais modernas e personalizadas para cada participante
 export const participantAvatars: Record<string, string> = {
-  "Ale": "/avatars/ale.jpg",
-  "Gustavo": "/avatars/gustavo.jpg",
-  "Leticia": "/avatars/leticia.jpg",
-  "Bah": "/avatars/bah.jpg",
-  "Bia": "/avatars/bia.jpg",
-  "Dani": "/avatars/dani.jpg",
-  "Denys": "/avatars/denys.jpg",
-  "Emilly": "/avatars/emilly.jpg",
-  "Heloisa": "/avatars/heloisa.jpg",
-  "Karen": "/avatars/karen.jpg",
-  "Rafa": "/avatars/rafa.jpg",
-  "Stella": "/avatars/stella.jpg",
-  "Valeria": "/avatars/valeria.jpg",
-  "Zé": "/avatars/ze.jpg"
+  "Ale": "https://api.dicebear.com/7.x/adventurer/svg?seed=Ale",
+  "Gustavo": "https://api.dicebear.com/7.x/adventurer/svg?seed=Gustavo",
+  "Leticia": "https://api.dicebear.com/7.x/adventurer/svg?seed=Leticia",
+  "Bah": "https://api.dicebear.com/7.x/adventurer/svg?seed=Bah",
+  "Bia": "https://api.dicebear.com/7.x/adventurer/svg?seed=Bia",
+  "Dani": "https://api.dicebear.com/7.x/adventurer/svg?seed=Dani",
+  "Denys": "https://api.dicebear.com/7.x/adventurer/svg?seed=Denys",
+  "Emilly": "https://api.dicebear.com/7.x/adventurer/svg?seed=Emilly",
+  "Heloisa": "https://api.dicebear.com/7.x/adventurer/svg?seed=Heloisa",
+  "Karen": "https://api.dicebear.com/7.x/adventurer/svg?seed=Karen",
+  "Rafa": "https://api.dicebear.com/7.x/adventurer/svg?seed=Rafa",
+  "Stella": "https://api.dicebear.com/7.x/adventurer/svg?seed=Stella",
+  "Valeria": "https://api.dicebear.com/7.x/adventurer/svg?seed=Valeria",
+  "Zé": "https://api.dicebear.com/7.x/adventurer/svg?seed=Ze"
 };
 
 // Obtém URL da bandeira a partir do código do país no FlagCDN
