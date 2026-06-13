@@ -685,6 +685,18 @@ export default function App() {
     }
   };
 
+  const isMatchStarted = (matchId: string): boolean => {
+    const dateStr = matchDates[matchId];
+    if (!dateStr) return false;
+    try {
+      const matchDate = parseMatchDate(dateStr);
+      const now = new Date();
+      return now >= matchDate;
+    } catch (e) {
+      return false;
+    }
+  };
+
   // Filtra as partidas com base nos seletores de rodada e grupo (e oculta as excluídas)
   const getFilteredMatches = (): Match[] => {
     return matchesList.filter((match) => {
@@ -1319,20 +1331,26 @@ export default function App() {
                     const isExcluded = isMatchExcluded(matchDates[match.id]);
                     const isToday = isMatchToday(match.id);
                     const isTodayLocked = (tempGuesses["TODAY_LOCKED"]?.home === 1 || allGuesses[selectedUser]?.["TODAY_LOCKED"]?.home === 1) && isToday;
+                    const started = isMatchStarted(match.id);
+                    const isLocked = isTodayLocked || started;
                     const guess = tempGuesses[match.id] || { home: null, away: null };
                     const realResult = gabarito[match.id];
                     const pointsResult = calculateMatchPoints(guess, realResult);
 
                     return (
-                      <div key={match.id} className={`match-card ${isExcluded ? "excluded-match" : ""} ${isTodayLocked ? "locked-match" : ""}`} style={{ opacity: isTodayLocked ? 0.85 : 1 }}>
+                      <div key={match.id} className={`match-card ${isExcluded ? "excluded-match" : ""} ${isLocked ? "locked-match" : ""}`} style={{ opacity: isLocked ? 0.85 : 1 }}>
                         <div className="match-header">
                           <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                             {match.groupName} • Rodada {match.round}
-                            {isTodayLocked && <Lock size={12} style={{ color: "var(--secondary)" }} />}
+                            {isLocked && <Lock size={12} style={{ color: started ? "var(--error)" : "var(--secondary)" }} />}
                           </span>
                           {isExcluded ? (
                             <span className="points-badge outcome" style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.1)" }}>
                               Fora do bolão
+                            </span>
+                          ) : started ? (
+                            <span className="points-badge" style={{ background: "rgba(239, 68, 68, 0.12)", color: "var(--error)", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
+                              Jogo Iniciado
                             </span>
                           ) : pointsResult.type !== "none" && (
                             <span className={`points-badge ${pointsResult.type}`}>
@@ -1365,7 +1383,7 @@ export default function App() {
                               onChange={(e) =>
                                 handleScoreChange(match.id, "home", e.target.value, "palpite")
                               }
-                              disabled={guessesLocked || isExcluded || isTodayLocked}
+                              disabled={guessesLocked || isExcluded || isLocked}
                             />
                             <span className="score-divider">x</span>
                             <input
@@ -1377,7 +1395,7 @@ export default function App() {
                               onChange={(e) =>
                                 handleScoreChange(match.id, "away", e.target.value, "palpite")
                               }
-                              disabled={guessesLocked || isExcluded || isTodayLocked}
+                              disabled={guessesLocked || isExcluded || isLocked}
                             />
                           </div>
 
