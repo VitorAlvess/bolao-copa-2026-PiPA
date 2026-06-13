@@ -727,8 +727,8 @@ export default function App() {
       {/* Header */}
       <header className="app-header">
         <div className="header-badge">Fase de Grupos</div>
-        <h1 className="app-title">🏆 Bolão dos 🐂 Copa 2026</h1>
-        <p className="app-subtitle">Sucumbam todos, pois o Zé vai ganhar!</p>
+        <h1 className="app-title">🏆 Bolão do PiPA copa 2026</h1>
+        <p className="app-subtitle">Será que o Zé vai ganhar?</p>
         {activeTab === "ranking" && (
           <div className="print-user-title print-only">
             Classificação Geral
