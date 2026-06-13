@@ -227,12 +227,14 @@ export const participants = [
   "Bia",
   "Dani",
   "Denys",
+  "Drica",
   "Emilly",
   "Heloisa",
   "Karen",
   "Rafa",
   "Stella",
   "Valeria",
+  "Vitoria",
   "Zé"
 ];
 
@@ -246,12 +248,14 @@ export const participantAvatars: Record<string, string> = {
   "Bia": "https://api.dicebear.com/7.x/adventurer/svg?seed=Bia",
   "Dani": "https://api.dicebear.com/7.x/adventurer/svg?seed=Dani",
   "Denys": "https://api.dicebear.com/7.x/adventurer/svg?seed=Denys",
+  "Drica": "https://api.dicebear.com/7.x/adventurer/svg?seed=Drica",
   "Emilly": "https://api.dicebear.com/7.x/adventurer/svg?seed=Emilly",
   "Heloisa": "https://api.dicebear.com/7.x/adventurer/svg?seed=Heloisa",
   "Karen": "https://api.dicebear.com/7.x/adventurer/svg?seed=Karen",
   "Rafa": "https://api.dicebear.com/7.x/adventurer/svg?seed=Rafa",
   "Stella": "https://api.dicebear.com/7.x/adventurer/svg?seed=Stella",
   "Valeria": "https://api.dicebear.com/7.x/adventurer/svg?seed=Valeria",
+  "Vitoria": "https://api.dicebear.com/7.x/adventurer/svg?seed=Vitoria",
   "Zé": "https://api.dicebear.com/7.x/adventurer/svg?seed=Ze"
 };
 

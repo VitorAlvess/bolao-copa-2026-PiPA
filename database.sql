@@ -29,7 +29,7 @@ INSERT INTO public.gabarito (id, results)
 VALUES (1, '{}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
--- 4. Inserir dados iniciais para os novos participantes (Ale, Gustavo, Leticia, Bah, Bia, Dani, Denys, Emilly, Heloisa, Karen, Rafa, Stella, Valeria, Zé)
+-- 4. Inserir dados iniciais para os novos participantes (Ale, Gustavo, Leticia, Bah, Bia, Dani, Denys, Drica, Emilly, Heloisa, Karen, Rafa, Stella, Valeria, Vitoria, Zé)
 INSERT INTO public.user_guesses (username, guesses) VALUES
 ('Ale', '{}'::jsonb),
 ('Gustavo', '{}'::jsonb),
@@ -38,12 +38,14 @@ INSERT INTO public.user_guesses (username, guesses) VALUES
 ('Bia', '{}'::jsonb),
 ('Dani', '{}'::jsonb),
 ('Denys', '{}'::jsonb),
+('Drica', '{}'::jsonb),
 ('Emilly', '{}'::jsonb),
 ('Heloisa', '{}'::jsonb),
 ('Karen', '{}'::jsonb),
 ('Rafa', '{}'::jsonb),
 ('Stella', '{}'::jsonb),
 ('Valeria', '{}'::jsonb),
+('Vitoria', '{}'::jsonb),
 ('Zé', '{"A_1_1":{"away":1,"home":3},"A_1_2":{"away":0,"home":1},"A_2_1":{"away":0,"home":2},"A_2_2":{"away":1,"home":0},"A_3_1":{"away":0,"home":3},"A_3_2":{"away":2,"home":0},"B_1_1":{"away":0,"home":2},"B_1_2":{"away":3,"home":0},"B_2_1":{"away":0,"home":2},"B_2_2":{"away":2,"home":0},"B_3_1":{"away":2,"home":2},"B_3_2":{"away":2,"home":2},"C_1_1":{"away":1,"home":2},"C_1_2":{"away":2,"home":0},"C_2_1":{"away":0,"home":4},"C_2_2":{"away":1,"home":1},"C_3_1":{"away":0,"home":2},"C_3_2":{"away":0,"home":3},"D_1_1":{"away":1,"home":2},"D_1_2":{"away":1,"home":0},"D_2_1":{"away":0,"home":3},"D_2_2":{"away":1,"home":0},"D_3_1":{"away":1,"home":1},"D_3_2":{"away":0,"home":2},"E_1_1":{"away":0,"home":5},"E_1_2":{"away":2,"home":1},"E_2_1":{"away":1,"home":2},"E_2_2":{"away":2,"home":0},"E_3_1":{"away":1,"home":3},"E_3_2":{"away":2,"home":0},"F_1_1":{"away":0,"home":1},"F_1_2":{"away":1,"home":1},"F_2_1":{"away":0,"home":2},"F_2_2":{"away":1,"home":1},"F_3_1":{"away":0,"home":2},"F_3_2":{"away":0,"home":2},"G_1_1":{"away":1,"home":2},"G_1_2":{"away":0,"home":2},"G_2_1":{"away":0,"home":2},"G_2_2":{"away":0,"home":2},"G_3_1":{"away":0,"home":3},"G_3_2":{"away":1,"home":2},"H_1_1":{"away":0,"home":3},"H_1_2":{"away":2,"home":1},"H_2_1":{"away":0,"home":3},"H_2_2":{"away":2,"home":0},"H_3_1":{"away":1,"home":2},"H_3_2":{"away":1,"home":0},"I_1_1":{"away":0,"home":3},"I_1_2":{"away":2,"home":0},"I_2_1":{"away":0,"home":4},"I_2_2":{"away":2,"home":0},"I_3_1":{"away":1,"home":2},"I_3_2":{"away":1,"home":2},"J_1_1":{"away":0,"home":3},"J_1_2":{"away":0,"home":2},"J_2_1":{"away":0,"home":3},"J_2_2":{"away":1,"home":1},"J_3_1":{"away":0,"home":4},"J_3_2":{"away":2,"home":0},"K_1_1":{"away":0,"home":3},"K_1_2":{"away":0,"home":3},"K_2_1":{"away":3,"home":1},"K_2_2":{"away":1,"home":1},"K_3_1":{"away":1,"home":3},"K_3_2":{"away":4,"home":0},"L_1_1":{"away":1,"home":2},"L_1_2":{"away":1,"home":0},"L_2_1":{"away":1,"home":2},"L_2_2":{"away":1,"home":3},"L_3_1":{"away":1,"home":3},"L_3_2":{"away":1,"home":3}}'::jsonb)
 ON CONFLICT (username) DO UPDATE SET guesses = EXCLUDED.guesses;
 

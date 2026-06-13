@@ -666,7 +666,11 @@ export default function App() {
     const groupMatches = matchesList.filter((m) => m.groupName === groupName);
 
     groupMatches.forEach((match) => {
-      const score = guesses[match.id];
+      // Prioriza o resultado real do gabarito para os jogos que já aconteceram
+      const realResult = gabarito[match.id];
+      const hasRealResult = realResult && realResult.home !== null && realResult.away !== null;
+      const score = hasRealResult ? realResult : guesses[match.id];
+      
       if (score && score.home !== null && score.away !== null) {
         const home = score.home;
         const away = score.away;
