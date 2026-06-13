@@ -182,7 +182,7 @@ export default function App() {
   const [selectedUser, setSelectedUser] = useState<string>(participants[0]);
   
   // Filtro de rodadas na visualização de jogos
-  const [roundFilter, setRoundFilter] = useState<number | "all">("all");
+  const [roundFilter, setRoundFilter] = useState<number | "all" | "today">("all");
   const [groupFilter, setGroupFilter] = useState<string | "all">("all");
 
   // Dados do Banco
@@ -615,15 +615,40 @@ export default function App() {
     showToast("Alterações descartadas.", "success");
   };
 
+  const isMatchToday = (matchId: string): boolean => {
+    const dateStr = matchDates[matchId];
+    if (!dateStr) return false;
+    try {
+      const matchDate = parseMatchDate(dateStr);
+      const today = new Date();
+      return (
+        matchDate.getDate() === today.getDate() &&
+        matchDate.getMonth() === today.getMonth() &&
+        matchDate.getFullYear() === today.getFullYear()
+      );
+    } catch (e) {
+      return false;
+    }
+  };
+
   // Filtra as partidas com base nos seletores de rodada e grupo (e oculta as excluídas)
   const getFilteredMatches = (): Match[] => {
     return matchesList.filter((match) => {
       if (isMatchExcluded(matchDates[match.id])) {
         return false;
       }
-      const matchRound = roundFilter === "all" || match.round === roundFilter;
+      
+      if (roundFilter === "today") {
+        if (!isMatchToday(match.id)) {
+          return false;
+        }
+      } else {
+        const matchRound = roundFilter === "all" || match.round === roundFilter;
+        if (!matchRound) return false;
+      }
+      
       const matchGroup = groupFilter === "all" || match.groupName.endsWith(groupFilter);
-      return matchRound && matchGroup;
+      return matchGroup;
     });
   };
 
@@ -1073,6 +1098,18 @@ export default function App() {
                 {/* Filtros de Rodadas */}
                 <div className="filters-container">
                   <button
+                    className={`filter-btn ${roundFilter === "today" ? "active" : ""}`}
+                    onClick={() => setRoundFilter("today")}
+                    style={{
+                      borderColor: roundFilter === "today" ? "var(--secondary)" : "rgba(255,255,255,0.05)",
+                      background: roundFilter === "today" ? "var(--secondary-glow)" : undefined,
+                      color: roundFilter === "today" ? "var(--secondary)" : undefined,
+                      fontWeight: 700
+                    }}
+                  >
+                    🔥 Jogos de Hoje
+                  </button>
+                  <button
                     className={`filter-btn ${roundFilter === "all" ? "active" : ""}`}
                     onClick={() => setRoundFilter("all")}
                   >
@@ -1383,6 +1420,18 @@ export default function App() {
                     </div>
 
                     <div className="filters-container">
+                      <button
+                        className={`filter-btn ${roundFilter === "today" ? "active" : ""}`}
+                        onClick={() => setRoundFilter("today")}
+                        style={{
+                          borderColor: roundFilter === "today" ? "var(--secondary)" : "rgba(255,255,255,0.05)",
+                          background: roundFilter === "today" ? "var(--secondary-glow)" : undefined,
+                          color: roundFilter === "today" ? "var(--secondary)" : undefined,
+                          fontWeight: 700
+                        }}
+                      >
+                        🔥 Jogos de Hoje
+                      </button>
                       <button
                         className={`filter-btn ${roundFilter === "all" ? "active" : ""}`}
                         onClick={() => setRoundFilter("all")}
