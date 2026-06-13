@@ -92,7 +92,7 @@ const defaultMatchDates: Record<string, string> = {
   "C_1_2": "06/13/2026 21:00",
   "D_1_2": "06/13/2026 21:00",
   "C_1_1": "06/13/2026 18:00",
-  "B_1_2": "06/13/2026 12:00",
+  "B_1_2": "06/13/2026 16:00",
   "E_1_2": "06/14/2026 19:00",
   "E_1_1": "06/14/2026 12:00",
   "F_1_1": "06/14/2026 15:00",
@@ -252,7 +252,9 @@ export default function App() {
         );
 
         if (matchingMatch && apiGame.local_date) {
-          datesMap[matchingMatch.id] = apiGame.local_date;
+          // Mantemos os horários oficiais do defaultMatchDates ajustados para Brasília/São Paulo
+          // e evitamos sobrescrever com o fuso horário diferente da API
+          // datesMap[matchingMatch.id] = apiGame.local_date;
         }
       });
       setMatchDates(datesMap);
