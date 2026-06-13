@@ -167,11 +167,12 @@ const formatMatchDate = (dateStr: string | undefined): string => {
   
   const day = dateParts[1];
   const month = dateParts[0];
+  const time = parts[1] || "";
   
   const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   const monthName = months[parseInt(month) - 1] || month;
   
-  return `${day} de ${monthName}`;
+  return `${day} de ${monthName}${time ? ` às ${time}` : ""}`;
 };
 
 export default function App() {
