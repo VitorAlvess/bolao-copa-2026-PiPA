@@ -230,6 +230,7 @@ export const participants = [
   "Emilly",
   "Heloisa",
   "Karen",
+  "Rafa",
   "Stella",
   "Valeria",
   "Zé"
@@ -249,6 +250,7 @@ export const participantAvatars: Record<string, string> = {
   "Emilly": "/avatars/emilly.jpg",
   "Heloisa": "/avatars/heloisa.jpg",
   "Karen": "/avatars/karen.jpg",
+  "Rafa": "/avatars/rafa.jpg",
   "Stella": "/avatars/stella.jpg",
   "Valeria": "/avatars/valeria.jpg",
   "Zé": "/avatars/ze.jpg"
