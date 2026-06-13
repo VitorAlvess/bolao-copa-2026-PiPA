@@ -11,7 +11,7 @@ import {
   Crown
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { participants, matchesList, getFlagUrl, participantAvatars, groupsData, isMatchExcluded, type Match } from "./data/teams";
+import { participants, matchesList, getFlagUrl, participantAvatars, groupsData, isMatchExcluded, parseMatchDate, type Match } from "./data/teams";
 
 // Tipagens do App
 interface Score {
@@ -200,6 +200,9 @@ export default function App() {
   // Controle de Trava de Palpites
   const [guessesLocked, setGuessesLocked] = useState<boolean>(false);
   const [tempGuessesLocked, setTempGuessesLocked] = useState<boolean>(false);
+
+  // Ordenação dos Jogos (por grupo ou data/hora)
+  const [sortBy, setSortBy] = useState<"group" | "date">("group");
 
   // Controle de Admin
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
@@ -625,6 +628,13 @@ export default function App() {
   };
 
   const filteredMatches = getFilteredMatches();
+  const sortedFilteredMatches = sortBy === "date"
+    ? [...filteredMatches].sort((a, b) => {
+        const dateA = matchDates[a.id] ? parseMatchDate(matchDates[a.id]).getTime() : 0;
+        const dateB = matchDates[b.id] ? parseMatchDate(matchDates[b.id]).getTime() : 0;
+        return dateA - dateB;
+      })
+    : filteredMatches;
   const ranking = getLeaderboard();
   const topThree = ranking.slice(0, 3);
   const activeMatchesCount = matchesList.filter((m) => !isMatchExcluded(matchDates[m.id])).length;
@@ -1111,6 +1121,22 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Ordenação dos Jogos */}
+              <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px", display: "flex", justifyContent: "flex-start" }}>
+                <div className="user-selector-container" style={{ background: "transparent", border: "none", padding: 0 }}>
+                  <span className="select-label" style={{ fontWeight: 600 }}>Ordenar por:</span>
+                  <select
+                    className="custom-select"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as "group" | "date")}
+                    style={{ minWidth: "200px" }}
+                  >
+                    <option value="group">Grupo e Rodada</option>
+                    <option value="date">Data e Hora (Cronológico)</option>
+                  </select>
+                </div>
+              </div>
+
               {/* Tabela de Classificação do Grupo (se houver grupo selecionado) */}
               {groupFilter !== "all" && (
                 <div className="group-standings-card">
@@ -1175,7 +1201,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="matches-grid">
-                  {filteredMatches.map((match) => {
+                  {sortedFilteredMatches.map((match) => {
                     const isExcluded = isMatchExcluded(matchDates[match.id]);
                     const guess = tempGuesses[match.id] || { home: null, away: null };
                     const realResult = gabarito[match.id];
@@ -1405,6 +1431,22 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Ordenação dos Jogos (Admin) */}
+                  <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px", display: "flex", justifyContent: "flex-start" }}>
+                    <div className="user-selector-container" style={{ background: "transparent", border: "none", padding: 0 }}>
+                      <span className="select-label" style={{ fontWeight: 600 }}>Ordenar por:</span>
+                      <select
+                        className="custom-select"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as "group" | "date")}
+                        style={{ minWidth: "200px" }}
+                      >
+                        <option value="group">Grupo e Rodada</option>
+                        <option value="date">Data e Hora (Cronológico)</option>
+                      </select>
+                    </div>
+                  </div>
+
                   {/* Tabela de Classificação do Grupo (se houver grupo selecionado) */}
                   {groupFilter !== "all" && (
                     <div className="group-standings-card" style={{ borderLeft: `4px solid ${isAdminAuthenticated ? "var(--accent)" : "var(--primary)"}` }}>
@@ -1462,7 +1504,7 @@ export default function App() {
                   )}
 
                   <div className="matches-grid">
-                    {filteredMatches.map((match) => {
+                    {sortedFilteredMatches.map((match) => {
                       const result = tempGabarito[match.id] || { home: null, away: null };
                       const isExcluded = isMatchExcluded(matchDates[match.id]);
 
