@@ -262,9 +262,8 @@ export const getFlagUrl = (code: string): string => {
 };
 
 // Data oficial do início do bolão (UTC-3). Jogos que acontecem antes desta data não pontuam.
-// Primeiro jogo ativo: Brasil x Marrocos (13/06/2026 18:00)
-// Data do corte: 13 de junho de 2026 às 12:30 (Horário de Brasília)
-export const BOLAO_START_DATE = new Date("2026-06-13T12:30:00-03:00");
+// Jogos anteriores a hoje (13 de junho de 2026) são excluídos.
+export const BOLAO_START_DATE = new Date("2026-06-13T00:00:00-03:00");
 
 // Converte data no formato "MM/DD/YYYY HH:MM" da Copa do Mundo para objeto Date
 export const parseMatchDate = (dateStr: string): Date => {

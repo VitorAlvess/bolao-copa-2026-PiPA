@@ -612,11 +612,13 @@ export default function App() {
     showToast("Alterações descartadas.", "success");
   };
 
-  // Filtra as partidas com base nos seletores de rodada e grupo
+  // Filtra as partidas com base nos seletores de rodada e grupo (e oculta as excluídas)
   const getFilteredMatches = (): Match[] => {
     return matchesList.filter((match) => {
+      if (isMatchExcluded(matchDates[match.id])) {
+        return false;
+      }
       const matchRound = roundFilter === "all" || match.round === roundFilter;
-      
       const matchGroup = groupFilter === "all" || match.groupName.endsWith(groupFilter);
       return matchRound && matchGroup;
     });
