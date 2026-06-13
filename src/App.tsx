@@ -552,6 +552,60 @@ export default function App() {
     }
   };
 
+  // Envia e trava os palpites de hoje para o participante
+  const submitAndLockTodayGuesses = async () => {
+    // Encontra todos os jogos de hoje
+    const todayMatches = matchesList.filter((m) => isMatchToday(m.id) && !isMatchExcluded(matchDates[m.id]));
+    
+    // Verifica se todos têm placar preenchido
+    const missingGuesses = todayMatches.filter((m) => {
+      const g = tempGuesses[m.id] || allGuesses[selectedUser]?.[m.id];
+      return !g || g.home === null || g.away === null;
+    });
+    
+    if (missingGuesses.length > 0) {
+      if (!confirm(`Você ainda não preencheu todos os jogos de hoje. Deseja enviar mesmo assim? (Os jogos sem palpites contarão como 0 pontos e não poderão ser preenchidos depois)`)) {
+        return;
+      }
+    } else {
+      if (!confirm(`Tem certeza que deseja ENVIAR e TRAVAR os palpites de hoje para ${selectedUser}? Após a confirmação, os palpites de hoje NÃO poderão mais ser alterados!`)) {
+        return;
+      }
+    }
+    
+    setSaving(true);
+    try {
+      const updatedGuesses = {
+        ...(tempGuesses || allGuesses[selectedUser] || {}),
+        "TODAY_LOCKED": { home: 1, away: 1 }
+      };
+      
+      const { error } = await supabase
+        .from("user_guesses")
+        .upsert({
+          username: selectedUser,
+          guesses: updatedGuesses,
+          updated_at: new Date().toISOString()
+        });
+        
+      if (error) throw error;
+      
+      setAllGuesses((prev) => ({
+        ...prev,
+        [selectedUser]: updatedGuesses
+      }));
+      setTempGuesses(updatedGuesses);
+      setHasChanges(false);
+      
+      showToast("Palpites de hoje enviados e travados com sucesso!", "success");
+    } catch (err) {
+      console.error("Erro ao travar palpites:", err);
+      showToast("Não foi possível enviar os palpites.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Salva o gabarito oficial no Supabase
   const saveGabarito = async () => {
     setSaving(true);
@@ -1051,11 +1105,34 @@ export default function App() {
                 </div>
               )}
 
-              <div className="pdf-actions no-print">
+              <div className="pdf-actions no-print" style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
                 <button className="pdf-btn" onClick={() => window.print()}>
                   <FileText size={16} />
                   Salvar PDF dos Palpites ({selectedUser})
                 </button>
+                
+                {tempGuesses["TODAY_LOCKED"]?.home === 1 || allGuesses[selectedUser]?.["TODAY_LOCKED"]?.home === 1 ? (
+                  <button className="pdf-btn" disabled style={{ background: "rgba(16, 185, 129, 0.08)", color: "var(--success)", border: "1px solid rgba(16, 185, 129, 0.2)", cursor: "not-allowed" }}>
+                    <Lock size={16} />
+                    Palpites de Hoje Enviados e Travados 🔒
+                  </button>
+                ) : (
+                  <button 
+                    className="save-btn" 
+                    onClick={submitAndLockTodayGuesses}
+                    disabled={saving}
+                    style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", borderColor: "#d97706", color: "#000", fontWeight: 700, boxShadow: "0 4px 10px rgba(245, 158, 11, 0.2)" }}
+                  >
+                    {saving ? (
+                      "Enviando..."
+                    ) : (
+                      <>
+                        <Lock size={16} />
+                        Enviar e Travar Palpites de Hoje 🔒
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Barra de Filtros e Seletor de Nome */}
@@ -1240,14 +1317,19 @@ export default function App() {
                 <div className="matches-grid">
                   {sortedFilteredMatches.map((match) => {
                     const isExcluded = isMatchExcluded(matchDates[match.id]);
+                    const isToday = isMatchToday(match.id);
+                    const isTodayLocked = (tempGuesses["TODAY_LOCKED"]?.home === 1 || allGuesses[selectedUser]?.["TODAY_LOCKED"]?.home === 1) && isToday;
                     const guess = tempGuesses[match.id] || { home: null, away: null };
                     const realResult = gabarito[match.id];
                     const pointsResult = calculateMatchPoints(guess, realResult);
 
                     return (
-                      <div key={match.id} className={`match-card ${isExcluded ? "excluded-match" : ""}`}>
+                      <div key={match.id} className={`match-card ${isExcluded ? "excluded-match" : ""} ${isTodayLocked ? "locked-match" : ""}`} style={{ opacity: isTodayLocked ? 0.85 : 1 }}>
                         <div className="match-header">
-                          <span>{match.groupName} • Rodada {match.round}</span>
+                          <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            {match.groupName} • Rodada {match.round}
+                            {isTodayLocked && <Lock size={12} style={{ color: "var(--secondary)" }} />}
+                          </span>
                           {isExcluded ? (
                             <span className="points-badge outcome" style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.1)" }}>
                               Fora do bolão
@@ -1283,7 +1365,7 @@ export default function App() {
                               onChange={(e) =>
                                 handleScoreChange(match.id, "home", e.target.value, "palpite")
                               }
-                              disabled={guessesLocked || isExcluded}
+                              disabled={guessesLocked || isExcluded || isTodayLocked}
                             />
                             <span className="score-divider">x</span>
                             <input
@@ -1295,7 +1377,7 @@ export default function App() {
                               onChange={(e) =>
                                 handleScoreChange(match.id, "away", e.target.value, "palpite")
                               }
-                              disabled={guessesLocked || isExcluded}
+                              disabled={guessesLocked || isExcluded || isTodayLocked}
                             />
                           </div>
 
