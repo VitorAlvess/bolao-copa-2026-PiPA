@@ -1602,4 +1602,303 @@ input:checked + .slider:before {
   font-weight: 500;
 }
 
+/* Botão de detalhamento do ranking */
+.detail-btn {
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 50px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--transition);
+}
+
+.detail-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  color: #fff;
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
+  transform: scale(1.05);
+}
+
+/* Modal Detalhes dos Palpites (Quick View) */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(5, 8, 16, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modal-content {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 720px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  position: relative;
+  animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-title-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.modal-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.modal-header h2 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.modal-header p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.modal-close-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  color: var(--text-muted);
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.modal-close-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+  transform: rotate(90deg);
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Grid de Estatísticas no Modal */
+.modal-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 640px) {
+  .modal-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.modal-stat-card {
+  background: rgba(30, 41, 59, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-stat-card.total-pts {
+  border-color: rgba(16, 185, 129, 0.2);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.05) 0%, rgba(30, 41, 59, 0.45) 100%);
+}
+
+.modal-stat-card.exact-pts {
+  border-color: rgba(245, 158, 11, 0.2);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.05) 0%, rgba(30, 41, 59, 0.45) 100%);
+}
+
+.modal-stat-card .stat-value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.modal-stat-card.total-pts .stat-value { color: var(--primary); }
+.modal-stat-card.exact-pts .stat-value { color: var(--secondary); }
+.modal-stat-card.outcome-pts .stat-value { color: #60a5fa; }
+.modal-stat-card.error-pts .stat-value { color: #f87171; }
+
+.modal-stat-card .stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.modal-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 14px;
+  border-left: 3px solid var(--primary);
+  padding-left: 10px;
+}
+
+/* Lista de Partidas do Modal */
+.modal-matches-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-match-item {
+  background: rgba(30, 41, 59, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  transition: var(--transition);
+}
+
+.modal-match-item:hover {
+  background: rgba(30, 41, 59, 0.55);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.modal-match-item.border-exact { border-left-color: var(--secondary); }
+.modal-match-item.border-outcome { border-left-color: #3b82f6; }
+.modal-match-item.border-zero { border-left-color: #ef4444; }
+.modal-match-item.border-pending { border-left-color: #475569; }
+
+.modal-match-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.modal-points-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.modal-points-badge.exact { background: rgba(245, 158, 11, 0.12); color: var(--secondary); }
+.modal-points-badge.outcome { background: rgba(59, 130, 246, 0.12); color: #60a5fa; }
+.modal-points-badge.zero { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+.modal-points-badge.pending { background: rgba(100, 116, 139, 0.12); color: #94a3b8; }
+
+.modal-match-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 38%;
+}
+
+.modal-team.home { justify-content: flex-end; text-align: right; }
+.modal-team.away { justify-content: flex-start; text-align: left; }
+
+.modal-team-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Placar comparativo no modal */
+.modal-score-comparison {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 24%;
+  background: rgba(15, 23, 42, 0.4);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.score-comparison-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 0.78rem;
+}
+
+.score-row-label {
+  color: var(--text-muted);
+}
+
+.score-row-value {
+  font-weight: 700;
+  color: #fff;
+}
+
+.score-row-value.highlight {
+  color: var(--primary);
+}
+
 

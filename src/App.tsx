@@ -8,7 +8,9 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   RefreshCw,
-  Crown
+  Crown,
+  Eye,
+  X
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { participants, matchesList, getFlagUrl, participantAvatars, groupsData, isMatchExcluded, parseMatchDate, type Match } from "./data/teams";
@@ -201,6 +203,9 @@ export default function App() {
   // Controle de Trava de Palpites
   const [guessesLocked, setGuessesLocked] = useState<boolean>(false);
   const [tempGuessesLocked, setTempGuessesLocked] = useState<boolean>(false);
+
+  // Detalhamento de palpites por usuário
+  const [selectedDetailUser, setSelectedDetailUser] = useState<string | null>(null);
 
   // Ordenação dos Jogos (por grupo ou data/hora)
   const [sortBy, setSortBy] = useState<"group" | "date">("group");
@@ -1013,6 +1018,7 @@ export default function App() {
                       <th style={{ textAlign: "center" }}>Acertou Venc. (1 pt)</th>
                       <th style={{ textAlign: "center" }}>Erros</th>
                       <th style={{ textAlign: "center" }}>Jogos Calculados</th>
+                      <th style={{ textAlign: "center", width: "100px" }}>Detalhes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1028,9 +1034,9 @@ export default function App() {
                         <td>
                           <div className="participant-name-col">
                             <div className="participant-avatar-sm" style={{
-                              background: idx === 0 ? "#f59e0b" : idx === 1 ? "#cbd5e1" : idx === 2 ? "#b45309" : "#1e293b",
-                              padding: participantAvatars[user.name] ? "0" : undefined
-                            }}>
+                                background: idx === 0 ? "#f59e0b" : idx === 1 ? "#cbd5e1" : idx === 2 ? "#b45309" : "#1e293b",
+                                padding: participantAvatars[user.name] ? "0" : undefined
+                              }}>
                               {participantAvatars[user.name] ? (
                                 <img src={participantAvatars[user.name]} alt={user.name} className="avatar-img" />
                               ) : (
@@ -1057,6 +1063,16 @@ export default function App() {
                         </td>
                         <td style={{ textAlign: "center" }} className="stats-detail">
                           {user.playedCount} / {activeMatchesCount}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button 
+                            className="detail-btn"
+                            onClick={() => setSelectedDetailUser(user.name)}
+                            title={`Ver palpites de ${user.name}`}
+                          >
+                            <Eye size={14} />
+                            <span>Ver</span>
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1785,6 +1801,166 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {/* MODAL DETALHAMENTO DE PALPITES */}
+          {selectedDetailUser && (() => {
+            const userGuesses = allGuesses[selectedDetailUser] || {};
+            
+            let points = 0;
+            let exactScores = 0;
+            let outcomeOnly = 0;
+            let errors = 0;
+            let playedCount = 0;
+
+            const modalMatches = matchesList.map((match) => {
+              if (isMatchExcluded(matchDates[match.id])) return null;
+
+              const guess = userGuesses[match.id];
+              const real = gabarito[match.id];
+              const result = calculateMatchPoints(guess, real);
+              
+              if (result.type !== "none") {
+                playedCount++;
+                points += result.points;
+                if (result.type === "exact") exactScores++;
+                else if (result.type === "outcome") outcomeOnly++;
+                else if (result.type === "zero") errors++;
+              }
+
+              return {
+                match,
+                guess,
+                real,
+                result,
+              };
+            }).filter(Boolean) as Array<{
+              match: Match;
+              guess: Score | undefined;
+              real: Score | undefined;
+              result: { points: number; type: "exact" | "outcome" | "zero" | "none" };
+            }>;
+
+            return (
+              <div className="modal-backdrop" onClick={() => setSelectedDetailUser(null)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <div className="modal-title-container">
+                      {participantAvatars[selectedDetailUser] ? (
+                        <img 
+                          src={participantAvatars[selectedDetailUser]} 
+                          alt={selectedDetailUser} 
+                          className="modal-avatar" 
+                        />
+                      ) : (
+                        <div className="participant-avatar-sm" style={{ width: "40px", height: "40px", fontSize: "1rem", background: "#1e293b", marginRight: "12px" }}>
+                          {selectedDetailUser.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <h2>Palpites de {selectedDetailUser}</h2>
+                        <p>Histórico detalhado de pontuação</p>
+                      </div>
+                    </div>
+                    <button className="modal-close-btn" onClick={() => setSelectedDetailUser(null)} title="Fechar">
+                      <X size={24} />
+                    </button>
+                  </div>
+
+                  <div className="modal-body">
+                    {/* Grid de Estatísticas */}
+                    <div className="modal-stats-grid">
+                      <div className="modal-stat-card total-pts">
+                        <span className="stat-value">{points}</span>
+                        <span className="stat-label">Pontos Totais</span>
+                      </div>
+                      <div className="modal-stat-card exact-pts">
+                        <span className="stat-value">{exactScores}</span>
+                        <span className="stat-label">Placar Exato (3 pts)</span>
+                      </div>
+                      <div className="modal-stat-card outcome-pts">
+                        <span className="stat-value">{outcomeOnly}</span>
+                        <span className="stat-label">Acertou Venc. (1 pt)</span>
+                      </div>
+                      <div className="modal-stat-card error-pts">
+                        <span className="stat-value">{errors}</span>
+                        <span className="stat-label">Erros (0 pts)</span>
+                      </div>
+                    </div>
+
+                    <h3 className="modal-section-title">Detalhamento dos Jogos ({playedCount} calculados)</h3>
+                    
+                    {/* Lista de Partidas */}
+                    <div className="modal-matches-list">
+                      {modalMatches.length === 0 ? (
+                        <div className="empty-state">
+                          <AlertTriangle className="empty-state-icon" />
+                          <p>Nenhum jogo calculado para este participante.</p>
+                        </div>
+                      ) : (
+                        modalMatches.map(({ match, guess, real, result }) => {
+                          const pointsType = result.type;
+                          const hasGuess = guess && guess.home !== null && guess.away !== null;
+                          const hasReal = real && real.home !== null && real.away !== null;
+
+                          let badgeText = "Aguardando";
+                          let badgeClass = "pending";
+
+                          if (pointsType === "exact") {
+                            badgeText = "Placar Exato (+3)";
+                            badgeClass = "exact";
+                          } else if (pointsType === "outcome") {
+                            badgeText = "Acertou Vencedor (+1)";
+                            badgeClass = "outcome";
+                          } else if (pointsType === "zero") {
+                            badgeText = "Errou (0 pts)";
+                            badgeClass = "zero";
+                          }
+
+                          return (
+                            <div key={match.id} className={`modal-match-item border-${badgeClass}`}>
+                              <div className="modal-match-header">
+                                <span>{match.groupName} • Rodada {match.round}</span>
+                                <span className={`modal-points-badge ${badgeClass}`}>{badgeText}</span>
+                              </div>
+                              <div className="modal-match-body">
+                                {/* Time Casa */}
+                                <div className="modal-team home">
+                                  <span className="modal-team-name">{match.homeTeam.name}</span>
+                                  <img src={getFlagUrl(match.homeTeam.code)} alt={match.homeTeam.name} className="flag-icon" />
+                                </div>
+
+                                {/* Placar Comparativo */}
+                                <div className="modal-score-comparison">
+                                  <div className="score-comparison-row">
+                                    <span className="score-row-label">Palpite:</span>
+                                    <span className="score-row-value">
+                                      {hasGuess ? `${guess.home} x ${guess.away}` : "- x -"}
+                                    </span>
+                                  </div>
+                                  <div className="score-comparison-row">
+                                    <span className="score-row-label">Resultado:</span>
+                                    <span className="score-row-value highlight">
+                                      {hasReal ? `${real.home} x ${real.away}` : "Aguardando"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Time Visitante */}
+                                <div className="modal-team away">
+                                  <img src={getFlagUrl(match.awayTeam.code)} alt={match.awayTeam.name} className="flag-icon" />
+                                  <span className="modal-team-name">{match.awayTeam.name}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
     </div>
