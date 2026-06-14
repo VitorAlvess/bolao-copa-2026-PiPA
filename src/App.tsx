@@ -206,6 +206,12 @@ export default function App() {
 
   // Detalhamento de palpites por usuário
   const [selectedDetailUser, setSelectedDetailUser] = useState<string | null>(null);
+  const [modalFilter, setModalFilter] = useState<"all" | "exact" | "outcome" | "zero" | "pending">("all");
+
+  const closeDetailModal = () => {
+    setSelectedDetailUser(null);
+    setModalFilter("all");
+  };
 
   // Ordenação dos Jogos (por grupo ou data/hora)
   const [sortBy, setSortBy] = useState<"group" | "date">("group");
@@ -1840,8 +1846,14 @@ export default function App() {
               result: { points: number; type: "exact" | "outcome" | "zero" | "none" };
             }>;
 
+            const filteredModalMatches = modalMatches.filter(({ result }) => {
+              if (modalFilter === "all") return true;
+              if (modalFilter === "pending") return result.type === "none";
+              return result.type === modalFilter;
+            });
+
             return (
-              <div className="modal-backdrop" onClick={() => setSelectedDetailUser(null)}>
+              <div className="modal-backdrop" onClick={closeDetailModal}>
                 <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                   <div className="modal-header">
                     <div className="modal-title-container">
@@ -1861,7 +1873,7 @@ export default function App() {
                         <p>Histórico detalhado de pontuação</p>
                       </div>
                     </div>
-                    <button className="modal-close-btn" onClick={() => setSelectedDetailUser(null)} title="Fechar">
+                    <button className="modal-close-btn" onClick={closeDetailModal} title="Fechar">
                       <X size={24} />
                     </button>
                   </div>
@@ -1887,17 +1899,51 @@ export default function App() {
                       </div>
                     </div>
 
-                    <h3 className="modal-section-title">Detalhamento dos Jogos ({playedCount} calculados)</h3>
+                    {/* Filtros no Modal */}
+                    <div className="modal-filters-container">
+                      <button 
+                        className={`modal-filter-btn ${modalFilter === "all" ? "active" : ""}`}
+                        onClick={() => setModalFilter("all")}
+                      >
+                        Todos ({modalMatches.length})
+                      </button>
+                      <button 
+                        className={`modal-filter-btn ${modalFilter === "exact" ? "active" : ""}`}
+                        onClick={() => setModalFilter("exact")}
+                      >
+                        🏆 Exato ({exactScores})
+                      </button>
+                      <button 
+                        className={`modal-filter-btn ${modalFilter === "outcome" ? "active" : ""}`}
+                        onClick={() => setModalFilter("outcome")}
+                      >
+                        ✅ Vencedor ({outcomeOnly})
+                      </button>
+                      <button 
+                        className={`modal-filter-btn ${modalFilter === "zero" ? "active" : ""}`}
+                        onClick={() => setModalFilter("zero")}
+                      >
+                        ❌ Erros ({errors})
+                      </button>
+                      <button 
+                        className={`modal-filter-btn ${modalFilter === "pending" ? "active" : ""}`}
+                        onClick={() => setModalFilter("pending")}
+                      >
+                        ⏳ Aguardando ({modalMatches.length - playedCount})
+                      </button>
+                    </div>
+
+                    <h3 className="modal-section-title">Detalhamento dos Jogos</h3>
                     
                     {/* Lista de Partidas */}
                     <div className="modal-matches-list">
-                      {modalMatches.length === 0 ? (
-                        <div className="empty-state">
+                      {filteredModalMatches.length === 0 ? (
+                        <div className="empty-state" style={{ padding: "40px 20px" }}>
                           <AlertTriangle className="empty-state-icon" />
-                          <p>Nenhum jogo calculado para este participante.</p>
+                          <p>Nenhum jogo encontrado com o filtro selecionado.</p>
                         </div>
                       ) : (
-                        modalMatches.map(({ match, guess, real, result }) => {
+                        filteredModalMatches.map(({ match, guess, real, result }) => {
                           const pointsType = result.type;
                           const hasGuess = guess && guess.home !== null && guess.away !== null;
                           const hasReal = real && real.home !== null && real.away !== null;
