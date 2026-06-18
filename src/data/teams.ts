@@ -235,7 +235,10 @@ export const participants = [
   "Stella",
   "Valeria",
   "Vitoria",
-  "Zé"
+  "Zé",
+  "Carli",
+  "Janaina",
+  "Marjory"
 ];
 
 // Dicionário de fotos de perfil personalizadas para cada participante (opcional)
@@ -256,7 +259,10 @@ export const participantAvatars: Record<string, string> = {
   "Stella": "https://api.dicebear.com/7.x/adventurer/svg?seed=Stella",
   "Valeria": "https://api.dicebear.com/7.x/adventurer/svg?seed=Valeria",
   "Vitoria": "https://api.dicebear.com/7.x/adventurer/svg?seed=Vitoria",
-  "Zé": "https://api.dicebear.com/7.x/adventurer/svg?seed=Ze"
+  "Zé": "https://api.dicebear.com/7.x/adventurer/svg?seed=Ze",
+  "Carli": "https://api.dicebear.com/7.x/adventurer/svg?seed=Carli",
+  "Janaina": "https://api.dicebear.com/7.x/adventurer/svg?seed=Janaina",
+  "Marjory": "https://api.dicebear.com/7.x/adventurer/svg?seed=Marjory"
 };
 
 // Obtém URL da bandeira a partir do código do país no FlagCDN
