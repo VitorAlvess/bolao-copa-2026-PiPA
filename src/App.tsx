@@ -279,7 +279,7 @@ const resolveKnockoutMatches = (apiGames: any[]): KnockoutMatch[] => {
 
 export default function App() {
   // Controle de Abas
-  const [activeTab, setActiveTab] = useState<"ranking_total" | "ranking_final" | "palpites_final" | "grupos" | "gabarito">("ranking_total");
+  const [activeTab, setActiveTab] = useState<"ranking_total" | "ranking_final" | "palpites_final" | "grupos" | "gabarito">("ranking_final");
   const [gruposSubTab, setGruposSubTab] = useState<"ranking_grupos" | "palpites_grupos" | "tabela_grupos">("ranking_grupos");
   const [adminSubTab, setAdminSubTab] = useState<"gabarito_final" | "gabarito_grupos">("gabarito_final");
   
@@ -1615,22 +1615,6 @@ export default function App() {
       {/* Navegação por Abas */}
       <nav className="tabs-navigation">
         <button 
-          className={`tab-btn ${activeTab === "ranking_total" ? "active" : ""}`}
-          onClick={() => {
-            if (hasChanges) {
-              if (confirm("Você tem alterações não salvas. Deseja mudar de aba e perder as edições?")) {
-                setHasChanges(false);
-                setActiveTab("ranking_total");
-              }
-            } else {
-              setActiveTab("ranking_total");
-            }
-          }}
-        >
-          <Trophy size={18} color="gold" />
-          Ranking Geral Definitivo
-        </button>
-        <button 
           className={`tab-btn ${activeTab === "ranking_final" ? "active" : ""}`}
           onClick={() => {
             if (hasChanges) {
@@ -1661,6 +1645,22 @@ export default function App() {
         >
           <FileText size={18} />
           Meus Palpites (Mata-Mata)
+        </button>
+        <button 
+          className={`tab-btn ${activeTab === "ranking_total" ? "active" : ""}`}
+          onClick={() => {
+            if (hasChanges) {
+              if (confirm("Você tem alterações não salvas. Deseja mudar de aba e perder as edições?")) {
+                setHasChanges(false);
+                setActiveTab("ranking_total");
+              }
+            } else {
+              setActiveTab("ranking_total");
+            }
+          }}
+        >
+          <Trophy size={18} color="gold" />
+          Ranking Geral Definitivo
         </button>
         <button 
           className={`tab-btn ${activeTab === "grupos" ? "active" : ""}`}
@@ -1793,9 +1793,13 @@ export default function App() {
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             {participantAvatars[participant.name] ? (
-                              <img src={participantAvatars[participant.name]} alt={participant.name} className="table-avatar" />
+                              <img 
+                                src={participantAvatars[participant.name]} 
+                                alt={participant.name} 
+                                style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)', display: 'block', flexShrink: 0 }}
+                              />
                             ) : (
-                              <div className="table-avatar-placeholder">
+                              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#fff', border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
                                 {participant.name.substring(0, 2).toUpperCase()}
                               </div>
                             )}
