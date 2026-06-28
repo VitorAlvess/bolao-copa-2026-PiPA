@@ -2633,3 +2633,179 @@ input:checked + .slider:before {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Mini Chaveamento Completo — Visão Geral Mobile
+   Visível apenas em telas ≤ 768px
+   ══════════════════════════════════════════════════════════════ */
+
+.mobile-mini-bracket {
+  display: none; /* oculto em desktop */
+  margin-top: 32px;
+  padding: 0 4px;
+}
+
+@media (max-width: 768px) {
+  .mobile-mini-bracket {
+    display: block;
+  }
+}
+
+.mini-bracket-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* — bloco de cada rodada — */
+.mini-round-block {
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  overflow: hidden;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.mini-round-block.mini-round-active {
+  border-color: rgba(139, 239, 26, 0.35);
+  box-shadow: 0 0 18px rgba(139, 239, 26, 0.08);
+}
+
+/* — cabeçalho da rodada — */
+.mini-round-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.mini-round-active .mini-round-label {
+  color: #8bef1a;
+}
+
+.mini-active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8bef1a;
+  box-shadow: 0 0 6px #8bef1a;
+  flex-shrink: 0;
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.7); }
+}
+
+/* — grid de partidas dentro da rodada — */
+.mini-round-matches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 1px;
+  padding: 6px;
+  gap: 6px;
+}
+
+/* — card de uma única partida — */
+.mini-match-row {
+  background: rgba(255,255,255,0.03);
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* — linha de um time — */
+.mini-bracket-team {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.15s;
+}
+
+.mini-bracket-team:last-child {
+  border-bottom: none;
+}
+
+.mini-bracket-team.mini-winner {
+  background: rgba(139, 239, 26, 0.08);
+}
+
+.mini-bracket-team.mini-winner .mini-team-name {
+  color: #8bef1a;
+  font-weight: 700;
+}
+
+.mini-flag {
+  width: 18px;
+  height: 13px;
+  object-fit: cover;
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.mini-flag-ph {
+  width: 18px;
+  height: 13px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mini-team-name {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-score {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--primary);
+  min-width: 14px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* === Banner de Identidade === */
+.identity-banner { margin-bottom: 18px; border-radius: 14px; background: linear-gradient(135deg, rgba(139,239,26,0.08) 0%, rgba(139,239,26,0.03) 100%); border: 1.5px solid rgba(139,239,26,0.35); box-shadow: 0 0 20px rgba(139,239,26,0.07); overflow: hidden; animation: identity-pulse 3s ease-in-out infinite; }
+@keyframes identity-pulse { 0%, 100% { border-color: rgba(139,239,26,0.35); box-shadow: 0 0 20px rgba(139,239,26,0.07); } 50% { border-color: rgba(139,239,26,0.6); box-shadow: 0 0 30px rgba(139,239,26,0.15); } }
+.identity-banner-inner { display: flex; align-items: center; gap: 14px; padding: 14px 18px; flex-wrap: wrap; }
+.identity-avatar-lg { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #8bef1a 0%, #4ade80 100%); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 800; color: #0a0f1a; flex-shrink: 0; overflow: hidden; border: 2px solid rgba(139,239,26,0.6); box-shadow: 0 0 14px rgba(139,239,26,0.3); }
+.identity-avatar-lg .avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.identity-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.identity-label { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.identity-name { font-size: 1.25rem; font-weight: 900; color: #8bef1a; letter-spacing: 0.02em; text-shadow: 0 0 16px rgba(139,239,26,0.5); }
+.identity-warning { font-size: 0.72rem; font-weight: 700; color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 5px 10px; white-space: nowrap; }
+.highlighted-selector { background: rgba(139,239,26,0.06) !important; border: 1.5px solid rgba(139,239,26,0.3) !important; border-radius: 10px !important; padding: 6px 12px !important; transition: border-color 0.2s, box-shadow 0.2s; }
+.highlighted-selector:hover { border-color: rgba(139,239,26,0.55) !important; box-shadow: 0 0 12px rgba(139,239,26,0.1) !important; }

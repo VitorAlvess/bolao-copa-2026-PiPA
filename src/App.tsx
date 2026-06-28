@@ -1516,7 +1516,7 @@ export default function App() {
           {activeTab === "grupos" ? "Fase de Grupos (Histórico)" : "Fase Final (Mata-Mata)"}
         </div>
         <h1 className="app-title">🏆 Bolão do PiPA copa 2026</h1>
-        <p className="app-subtitle">Será que o Zé vai ganhar?</p>
+        <p className="app-subtitle">🇧🇷 Vai Brasil! Hexa ou chora! 🏆</p>
         {(activeTab === "ranking_final" || activeTab === "grupos") && (
           <div className="print-user-title print-only">
             Classificação Geral
@@ -1915,6 +1915,24 @@ export default function App() {
           {/* ABA 2: MEUS PALPITES (FASE FINAL) */}
           {activeTab === "palpites_final" && (
             <div>
+              {/* BANNER DE IDENTIDADE — quem está preenchendo */}
+              <div className="identity-banner">
+                <div className="identity-banner-inner">
+                  <div className="identity-avatar-lg">
+                    {participantAvatars[selectedUser] ? (
+                      <img src={participantAvatars[selectedUser]} alt={selectedUser} className="avatar-img" />
+                    ) : (
+                      <span>{selectedUser.substring(0, 2).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="identity-text">
+                    <span className="identity-label">✏️ Você está preenchendo como:</span>
+                    <span className="identity-name">{selectedUser}</span>
+                  </div>
+                  <span className="identity-warning">⚠️ Confira seu nome antes de salvar!</span>
+                </div>
+              </div>
+
               {/* CARD PALPITE PÓDIO DA COPA */}
               {(() => {
                 const userChamp = tempGuesses["cup_champion"] || allGuesses[selectedUser]?.["cup_champion"] || "";
@@ -2060,20 +2078,20 @@ export default function App() {
 
               {/* Barra de Filtros e Seletor de Nome (SÓ MOSTRA FILTRO DE RODADA SE ESTIVER EM MODO GRADE) */}
               <div className="controls-bar">
-                <div className="user-selector-container">
+                <div className="user-selector-container highlighted-selector">
                   {participantAvatars[selectedUser] ? (
                     <img 
                       src={participantAvatars[selectedUser]} 
                       alt={selectedUser} 
                       className="avatar-img" 
-                      style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover", border: "1px solid var(--card-border)" }}
+                      style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover", border: "2px solid var(--primary)" }}
                     />
                   ) : (
-                    <div className="participant-avatar-sm" style={{ width: "30px", height: "30px", fontSize: "0.85rem", background: "#1e293b" }}>
+                    <div className="participant-avatar-sm" style={{ width: "30px", height: "30px", fontSize: "0.85rem", background: "#1e293b", border: "2px solid var(--primary)" }}>
                       {selectedUser.substring(0, 2).toUpperCase()}
                     </div>
                   )}
-                  <span className="select-label">Quem é você?</span>
+                  <span className="select-label" style={{ color: "var(--primary)", fontWeight: 800 }}>👤 Quem é você?</span>
                   <select
                     className="custom-select"
                     value={selectedUser}
@@ -2160,6 +2178,7 @@ export default function App() {
                 if (viewMode === "chaveamento") {
                   const activeStage = getActiveStage();
                   return (
+                    <>
                     <div className="bracket-wrapper no-print">
                       {/* Mobile Navigation Tabs */}
                       <div className="mobile-bracket-nav no-print">
@@ -2269,6 +2288,70 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+
+                    {/* ── Mini Chaveamento Completo (apenas mobile) ─────────────────── */}
+                    {(() => {
+                      const allRounds: { label: string; stage: string; ids: string[] }[] = [
+                        { label: "16-avos", stage: "R32", ids: [...leftR32Ids, ...rightR32Ids] },
+                        { label: "Oitavas", stage: "R16", ids: [...leftR16Ids, ...rightR16Ids] },
+                        { label: "Quartas", stage: "QF",  ids: [...leftQFIds,  ...rightQFIds]  },
+                        { label: "Semis",   stage: "SF",  ids: [...leftSFIds,  ...rightSFIds]  },
+                        { label: "Final / 3º", stage: "FINAL", ids: centerFinalIds },
+                      ];
+                      const userKnockout = getUserKnockoutMatches(selectedUser);
+
+                      const renderMiniRow = (m: KnockoutMatch) => {
+                        const guess = tempGuesses[m.id] || allGuesses[selectedUser]?.[m.id] || { home: null, away: null };
+                        const winner = tempGuesses[`WINNER_${m.id}`] || allGuesses[selectedUser]?.[`WINNER_${m.id}`] || "";
+                        const hasScore = guess.home !== null && guess.away !== null;
+
+                        const teamRow = (team: { name: string; code: string }, side: "home" | "away") => {
+                          const score = side === "home" ? guess.home : guess.away;
+                          const isWinner = winner === team.name || (hasScore && !winner && (
+                            side === "home" ? (guess.home ?? 0) > (guess.away ?? 0) : (guess.away ?? 0) > (guess.home ?? 0)
+                          ));
+                          return (
+                            <div className={`mini-bracket-team ${isWinner ? "mini-winner" : ""}`} key={side}>
+                              {team.code
+                                ? <img src={getFlagUrl(team.code)} alt={team.name} className="mini-flag" />
+                                : <span className="mini-flag-ph">?</span>
+                              }
+                              <span className="mini-team-name">{team.name.length > 10 ? team.name.slice(0, 10) + "…" : team.name}</span>
+                              <span className="mini-score">{score !== null ? score : "-"}</span>
+                            </div>
+                          );
+                        };
+
+                        return (
+                          <div className="mini-match-row" key={m.id}>
+                            {teamRow(m.homeTeam, "home")}
+                            {teamRow(m.awayTeam, "away")}
+                          </div>
+                        );
+                      };
+
+                      return (
+                        <div className="mobile-mini-bracket">
+                          <h4 className="mini-bracket-title">🏆 Visão Geral do Chaveamento</h4>
+                          {allRounds.map(round => {
+                            const matches = round.ids.map(id => userKnockout.find(m => m.id === id)).filter(Boolean) as KnockoutMatch[];
+                            const isActive = activeStage === round.stage;
+                            return (
+                              <div key={round.stage} className={`mini-round-block ${isActive ? "mini-round-active" : ""}`}>
+                                <div className="mini-round-label">
+                                  {isActive && <span className="mini-active-dot" />}
+                                  {round.label}
+                                </div>
+                                <div className="mini-round-matches">
+                                  {matches.map(m => renderMiniRow(m))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    </>
                   );
                 }
 
