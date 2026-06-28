@@ -5,6 +5,7 @@ import {
   Settings, 
   Save, 
   Lock, 
+  Unlock,
   CheckCircle2, 
   AlertTriangle, 
   RefreshCw,
@@ -13,7 +14,59 @@ import {
   X
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { participants, matchesList, getFlagUrl, participantAvatars, groupsData, isMatchExcluded, parseMatchDate, type Match } from "./data/teams";
+import { 
+  participants, 
+  matchesList, 
+  getFlagUrl, 
+  participantAvatars, 
+  groupsData, 
+  isMatchExcluded, 
+  parseMatchDate, 
+  type Match,
+  knockoutMatchesConfig,
+  allTeamsList
+} from "./data/teams";
+
+const getSaoPauloDate = (localDateStr: string, stadiumIdStr: string): string => {
+  if (!localDateStr) return "";
+  const [datePart, timePart] = localDateStr.split(" ");
+  const [month, day, year] = datePart.split("/").map(Number);
+  const [hours, minutes] = timePart.split(":").map(Number);
+  
+  const sId = Number(stadiumIdStr);
+  let offset = 0;
+  
+  if ([1, 2, 3].includes(sId)) {
+    offset = -6; // Mexico
+  } else if ([4, 5, 6].includes(sId)) {
+    offset = -5; // US Central
+  } else if ([7, 8, 9, 10, 11, 12].includes(sId)) {
+    offset = -4; // US Eastern
+  } else if ([13, 14, 15, 16].includes(sId)) {
+    offset = -7; // US Pacific
+  } else {
+    offset = -4;
+  }
+  
+  const utcTime = Date.UTC(year, month - 1, day, hours - offset, minutes);
+  const spTime = new Date(utcTime - (3 * 60 * 60 * 1000));
+  
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const spMonth = pad(spTime.getUTCMonth() + 1);
+  const spDay = pad(spTime.getUTCDate());
+  const spYear = spTime.getUTCFullYear();
+  const spHours = pad(spTime.getUTCHours());
+  const spMinutes = pad(spTime.getUTCMinutes());
+  
+  return `${spMonth}/${spDay}/${spYear} ${spHours}:${spMinutes}`;
+};
+
+interface KnockoutMatch extends Match {
+  stage: string;
+  homeLabel: string;
+  awayLabel: string;
+  dateStr: string;
+}
 
 // Tipagens do App
 interface Score {
@@ -21,7 +74,7 @@ interface Score {
   away: number | null;
 }
 
-type GuessesData = Record<string, Score>; // match_id -> { home, away }
+type GuessesData = Record<string, any>; // match_id -> Score ou cup_champion -> string
 type AllParticipantsGuesses = Record<string, GuessesData>; // username -> GuessesData
 
 interface ParticipantRanking {
@@ -177,9 +230,258 @@ const formatMatchDate = (dateStr: string | undefined): string => {
   return `${day} de ${monthName}${time ? ` às ${time}` : ""}`;
 };
 
+const resolveKnockoutMatches = (apiGames: any[]): KnockoutMatch[] => {
+  return knockoutMatchesConfig.map((config) => {
+    const apiGame = apiGames.find(g => g.id === config.id);
+    if (!apiGame) {
+      return {
+        id: config.id,
+        groupName: config.groupName,
+        round: 4,
+        stage: config.stage,
+        homeLabel: config.homeLabel,
+        awayLabel: config.awayLabel,
+        dateStr: config.dateStr,
+        homeTeam: { name: config.homeLabel, code: "" },
+        awayTeam: { name: config.awayLabel, code: "" }
+      };
+    }
+    
+    // Resolve home team
+    let homeTeam: { name: string; code: string } = { name: config.homeLabel, code: "" };
+    if (apiGame.home_team_name_en && apiGame.home_team_name_en !== "null" && apiGame.home_team_name_en !== "0") {
+      const ptName = teamNameMapping[apiGame.home_team_name_en] || apiGame.home_team_name_en;
+      const found = allTeamsList.find(t => t.name.toLowerCase() === ptName.toLowerCase());
+      homeTeam = found || { name: ptName, code: "" };
+    }
+    
+    // Resolve away team
+    let awayTeam: { name: string; code: string } = { name: config.awayLabel, code: "" };
+    if (apiGame.away_team_name_en && apiGame.away_team_name_en !== "null" && apiGame.away_team_name_en !== "0") {
+      const ptName = teamNameMapping[apiGame.away_team_name_en] || apiGame.away_team_name_en;
+      const found = allTeamsList.find(t => t.name.toLowerCase() === ptName.toLowerCase());
+      awayTeam = found || { name: ptName, code: "" };
+    }
+    
+    return {
+      id: config.id,
+      groupName: config.groupName,
+      round: 4,
+      stage: config.stage,
+      homeLabel: config.homeLabel,
+      awayLabel: config.awayLabel,
+      dateStr: apiGame.local_date || config.dateStr,
+      homeTeam,
+      awayTeam
+    };
+  });
+};
+
 export default function App() {
   // Controle de Abas
-  const [activeTab, setActiveTab] = useState<"ranking" | "palpites" | "gabarito">("ranking");
+  const [activeTab, setActiveTab] = useState<"ranking_final" | "palpites_final" | "grupos" | "gabarito">("ranking_final");
+  const [gruposSubTab, setGruposSubTab] = useState<"ranking_grupos" | "palpites_grupos" | "tabela_grupos">("ranking_grupos");
+  const [adminSubTab, setAdminSubTab] = useState<"gabarito_final" | "gabarito_grupos">("gabarito_final");
+  
+  // Mata-Mata Resolved Matches
+  const [knockoutMatches, setKnockoutMatches] = useState<KnockoutMatch[]>(() => {
+    return knockoutMatchesConfig.map(config => ({
+      id: config.id,
+      groupName: config.groupName,
+      round: 4,
+      stage: config.stage,
+      homeLabel: config.homeLabel,
+      awayLabel: config.awayLabel,
+      dateStr: config.dateStr,
+      homeTeam: { name: config.homeLabel, code: "" },
+      awayTeam: { name: config.awayLabel, code: "" }
+    }));
+  });
+
+  const [knockoutStageFilter, setKnockoutStageFilter] = useState<string | "all">("all");
+  const [viewMode, setViewMode] = useState<"grade" | "chaveamento">("chaveamento");
+  const [modalPhase, setModalPhase] = useState<"final" | "grupos">("final");
+  const [bracketTab, setBracketTab] = useState<"R32" | "R16" | "QF" | "SF" | "FINAL">("R32");
+
+  // Resolve os confrontos de mata-mata de forma encadeada para o palpite do usuário
+  const getUserKnockoutMatches = (username: string): KnockoutMatch[] => {
+    const resolvedMatches = [...knockoutMatches];
+    const userGuesses = allGuesses[username] || {};
+
+    const getPredictedWinner = (matchId: string): { name: string; code: string } | null => {
+      const match = resolvedMatches.find(m => m.id === matchId);
+      if (!match) return null;
+
+      // Se o jogo já acabou na vida real, usa o resultado oficial
+      const real = gabarito[matchId];
+      if (real && real.home !== null && real.away !== null) {
+        if (real.home > real.away) return match.homeTeam;
+        if (real.away > real.home) return match.awayTeam;
+        const officialWinnerName = gabarito[`WINNER_${matchId}`];
+        if (officialWinnerName) {
+          return match.homeTeam.name === officialWinnerName ? match.homeTeam : match.awayTeam;
+        }
+      }
+
+      // Senão, usa o palpite do usuário
+      const guess = userGuesses[matchId];
+      const clickedWinner = userGuesses[`WINNER_${matchId}`];
+
+      if (clickedWinner) {
+        if (match.homeTeam.name === clickedWinner) return match.homeTeam;
+        if (match.awayTeam.name === clickedWinner) return match.awayTeam;
+      }
+
+      if (guess && guess.home !== null && guess.away !== null) {
+        if (guess.home > guess.away) return match.homeTeam;
+        if (guess.away > guess.home) return match.awayTeam;
+      }
+
+      return null;
+    };
+
+    const resolveTeamLabel = (label: string): { name: string; code: string } => {
+      if (label.startsWith("Winner Match ")) {
+        const parentId = label.replace("Winner Match ", "").trim();
+        const winner = getPredictedWinner(parentId);
+        if (winner && winner.code !== "") return winner;
+      } else if (label.startsWith("Loser Match ")) {
+        const parentId = label.replace("Loser Match ", "").trim();
+        const match = resolvedMatches.find(m => m.id === parentId);
+        const winner = getPredictedWinner(parentId);
+        if (match && winner && winner.code !== "") {
+          return match.homeTeam.name === winner.name ? match.awayTeam : match.homeTeam;
+        }
+      }
+      return { name: label, code: "" };
+    };
+
+    for (let i = 89; i <= 104; i++) {
+      const idx = resolvedMatches.findIndex(m => m.id === String(i));
+      if (idx !== -1) {
+        const match = resolvedMatches[idx];
+        let homeTeam = { ...match.homeTeam };
+        let awayTeam = { ...match.awayTeam };
+
+        if (homeTeam.code === "") {
+          homeTeam = resolveTeamLabel(match.homeLabel);
+        }
+        if (awayTeam.code === "") {
+          awayTeam = resolveTeamLabel(match.awayLabel);
+        }
+
+        resolvedMatches[idx] = {
+          ...match,
+          homeTeam,
+          awayTeam
+        };
+      }
+    }
+
+    return resolvedMatches;
+  };
+
+  // Resolve os confrontos de mata-mata de forma encadeada para o gabarito oficial (Admin)
+  const getOfficialKnockoutMatches = (): KnockoutMatch[] => {
+    const resolvedMatches = [...knockoutMatches];
+
+    const getOfficialWinner = (matchId: string): { name: string; code: string } | null => {
+      const match = resolvedMatches.find(m => m.id === matchId);
+      if (!match) return null;
+
+      const real = gabarito[matchId];
+      const clickedWinner = gabarito[`WINNER_${matchId}`];
+
+      if (clickedWinner) {
+        if (match.homeTeam.name === clickedWinner) return match.homeTeam;
+        if (match.awayTeam.name === clickedWinner) return match.awayTeam;
+      }
+
+      if (real && real.home !== null && real.away !== null) {
+        if (real.home > real.away) return match.homeTeam;
+        if (real.away > real.home) return match.awayTeam;
+      }
+
+      return null;
+    };
+
+    const resolveTeamLabel = (label: string): { name: string; code: string } => {
+      if (label.startsWith("Winner Match ")) {
+        const parentId = label.replace("Winner Match ", "").trim();
+        const winner = getOfficialWinner(parentId);
+        if (winner && winner.code !== "") return winner;
+      } else if (label.startsWith("Loser Match ")) {
+        const parentId = label.replace("Loser Match ", "").trim();
+        const match = resolvedMatches.find(m => m.id === parentId);
+        const winner = getOfficialWinner(parentId);
+        if (match && winner && winner.code !== "") {
+          return match.homeTeam.name === winner.name ? match.awayTeam : match.homeTeam;
+        }
+      }
+      return { name: label, code: "" };
+    };
+
+    for (let i = 89; i <= 104; i++) {
+      const idx = resolvedMatches.findIndex(m => m.id === String(i));
+      if (idx !== -1) {
+        const match = resolvedMatches[idx];
+        let homeTeam = { ...match.homeTeam };
+        let awayTeam = { ...match.awayTeam };
+
+        if (homeTeam.code === "") {
+          homeTeam = resolveTeamLabel(match.homeLabel);
+        }
+        if (awayTeam.code === "") {
+          awayTeam = resolveTeamLabel(match.awayLabel);
+        }
+
+        resolvedMatches[idx] = {
+          ...match,
+          homeTeam,
+          awayTeam
+        };
+      }
+    }
+
+    return resolvedMatches;
+  };
+
+  // Retorna qual fase do mata-mata está ativa (com jogos reais pendentes no gabarito)
+  const getActiveStage = (): string => {
+    // 16-avos (R32)
+    const r32Matches = knockoutMatches.filter(m => m.stage === "R32");
+    const hasPendingR32 = r32Matches.some(m => {
+      const real = gabarito[m.id];
+      return !real || real.home === null || real.away === null;
+    });
+    if (hasPendingR32) return "R32";
+
+    // Oitavas (R16)
+    const r16Matches = knockoutMatches.filter(m => m.stage === "R16");
+    const hasPendingR16 = r16Matches.some(m => {
+      const real = gabarito[m.id];
+      return !real || real.home === null || real.away === null;
+    });
+    if (hasPendingR16) return "R16";
+
+    // Quartas (QF)
+    const qfMatches = knockoutMatches.filter(m => m.stage === "QF");
+    const hasPendingQF = qfMatches.some(m => {
+      const real = gabarito[m.id];
+      return !real || real.home === null || real.away === null;
+    });
+    if (hasPendingQF) return "QF";
+
+    // Semifinais (SF)
+    const sfMatches = knockoutMatches.filter(m => m.stage === "SF");
+    const hasPendingSF = sfMatches.some(m => {
+      const real = gabarito[m.id];
+      return !real || real.home === null || real.away === null;
+    });
+    if (hasPendingSF) return "SF";
+
+    return "FINAL";
+  };
   
   // Usuário selecionado (Tela de Palpites)
   const [selectedUser, setSelectedUser] = useState<string>(participants[0]);
@@ -248,28 +550,31 @@ export default function App() {
         throw new Error("Formato de dados retornado pela API inválido.");
       }
 
-      // Atualiza as datas dos jogos com base nos dados mais recentes da API
+      // Atualiza as datas dos jogos com base nos dados mais recentes da API e resolve mata-mata
       const datesMap: Record<string, string> = { ...defaultMatchDates };
       data.games.forEach((apiGame: any) => {
-        const homeEng = apiGame.home_team_name_en;
-        const awayEng = apiGame.away_team_name_en;
-        const homePt = teamNameMapping[homeEng] || homeEng;
-        const awayPt = teamNameMapping[awayEng] || awayEng;
-
-        const matchingMatch = matchesList.find(
-          (m) =>
-            m.groupName === `Grupo ${apiGame.group}` &&
-            ((m.homeTeam.name === homePt && m.awayTeam.name === awayPt) ||
-             (m.homeTeam.name === awayPt && m.awayTeam.name === homePt))
-        );
-
-        if (matchingMatch && apiGame.local_date) {
-          // Mantemos os horários oficiais do defaultMatchDates ajustados para Brasília/São Paulo
-          // e evitamos sobrescrever com o fuso horário diferente da API
-          // datesMap[matchingMatch.id] = apiGame.local_date;
+        if (apiGame.id && apiGame.local_date) {
+          const groupMatch = matchesList.find(
+            (m) =>
+              m.groupName === `Grupo ${apiGame.group}` &&
+              ((m.homeTeam.name === teamNameMapping[apiGame.home_team_name_en] && m.awayTeam.name === teamNameMapping[apiGame.away_team_name_en]) ||
+               (m.homeTeam.name === teamNameMapping[apiGame.away_team_name_en] && m.awayTeam.name === teamNameMapping[apiGame.home_team_name_en]))
+          );
+          let finalDate = apiGame.local_date;
+          if (Number(apiGame.id) >= 73 && apiGame.stadium_id) {
+            finalDate = getSaoPauloDate(apiGame.local_date, apiGame.stadium_id.toString());
+          }
+          if (groupMatch) {
+            datesMap[groupMatch.id] = finalDate;
+          } else {
+            datesMap[apiGame.id] = finalDate;
+          }
         }
       });
       setMatchDates(datesMap);
+
+      const resolved = resolveKnockoutMatches(data.games);
+      setKnockoutMatches(resolved);
 
       // Filtra apenas jogos finalizados
       const finishedGames = data.games.filter((g: any) => g.finished === "TRUE");
@@ -282,35 +587,42 @@ export default function App() {
       let hasNewScores = false;
 
       finishedGames.forEach((apiGame: any) => {
-        const homeEng = apiGame.home_team_name_en;
-        const awayEng = apiGame.away_team_name_en;
+        const apiHomeScore = apiGame.home_score !== null && apiGame.home_score !== "null" ? parseInt(apiGame.home_score) : null;
+        const apiAwayScore = apiGame.away_score !== null && apiGame.away_score !== "null" ? parseInt(apiGame.away_score) : null;
 
-        const homePt = teamNameMapping[homeEng] || homeEng;
-        const awayPt = teamNameMapping[awayEng] || awayEng;
-
-        // Encontra o jogo correspondente no bolão pelo grupo e seleções (qualquer ordem de mandante/visitante)
-        const matchingMatch = matchesList.find(
-          (m) =>
-            m.groupName === `Grupo ${apiGame.group}` &&
-            ((m.homeTeam.name === homePt && m.awayTeam.name === awayPt) ||
-             (m.homeTeam.name === awayPt && m.awayTeam.name === homePt))
-        );
-
-        if (matchingMatch) {
-          const apiHomeScore = apiGame.home_score !== null && apiGame.home_score !== "null" ? parseInt(apiGame.home_score) : null;
-          const apiAwayScore = apiGame.away_score !== null && apiGame.away_score !== "null" ? parseInt(apiGame.away_score) : null;
-
-          if (apiHomeScore !== null && apiAwayScore !== null && !isNaN(apiHomeScore) && !isNaN(apiAwayScore)) {
-            // Verifica se a ordem mandante/visitante está invertida em relação ao bolão
-            const isReversed = matchingMatch.homeTeam.name === awayPt;
-            const homeScore = isReversed ? apiAwayScore : apiHomeScore;
-            const awayScore = isReversed ? apiHomeScore : apiAwayScore;
-
-            // Verifica se houve mudança ou se está ausente no banco
-            const current = dbGabarito[matchingMatch.id] || { home: null, away: null };
-            if (current.home !== homeScore || current.away !== awayScore) {
-              updatedGabarito[matchingMatch.id] = { home: homeScore, away: awayScore };
+        if (apiHomeScore !== null && apiAwayScore !== null && !isNaN(apiHomeScore) && !isNaN(apiAwayScore)) {
+          const gameIdNum = parseInt(apiGame.id);
+          if (gameIdNum >= 73 && gameIdNum <= 104) {
+            // Mata-mata (ID >= 73)
+            const current = dbGabarito[apiGame.id] || { home: null, away: null };
+            if (current.home !== apiHomeScore || current.away !== apiAwayScore) {
+              updatedGabarito[apiGame.id] = { home: apiHomeScore, away: apiAwayScore };
               hasNewScores = true;
+            }
+          } else {
+            // Fase de grupos
+            const homeEng = apiGame.home_team_name_en;
+            const awayEng = apiGame.away_team_name_en;
+            const homePt = teamNameMapping[homeEng] || homeEng;
+            const awayPt = teamNameMapping[awayEng] || awayEng;
+
+            const matchingMatch = matchesList.find(
+              (m) =>
+                m.groupName === `Grupo ${apiGame.group}` &&
+                ((m.homeTeam.name === homePt && m.awayTeam.name === awayPt) ||
+                 (m.homeTeam.name === awayPt && m.awayTeam.name === homePt))
+            );
+
+            if (matchingMatch) {
+              const isReversed = matchingMatch.homeTeam.name === awayPt;
+              const homeScore = isReversed ? apiAwayScore : apiHomeScore;
+              const awayScore = isReversed ? apiHomeScore : apiAwayScore;
+
+              const current = dbGabarito[matchingMatch.id] || { home: null, away: null };
+              if (current.home !== homeScore || current.away !== awayScore) {
+                updatedGabarito[matchingMatch.id] = { home: homeScore, away: awayScore };
+                hasNewScores = true;
+              }
             }
           }
         }
@@ -389,6 +701,50 @@ export default function App() {
       setTempGuesses(formattedGuesses[selectedUser] || {});
       setHasChanges(false);
 
+      // 3. Buscar jogos da API para resolver times do mata-mata e datas
+      let apiGames: any[] = [];
+      try {
+        let response;
+        try {
+          response = await fetch("https://worldcup26.ir/get/games");
+        } catch (directErr) {
+          response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent("https://worldcup26.ir/get/games")}`);
+        }
+        if (response.ok) {
+          const apiData = await response.json();
+          if (apiData && Array.isArray(apiData.games)) {
+            apiGames = apiData.games;
+            
+            const datesMap: Record<string, string> = { ...defaultMatchDates };
+            apiData.games.forEach((apiGame: any) => {
+              if (apiGame.id && apiGame.local_date) {
+                const groupMatch = matchesList.find(
+                  (m) =>
+                    m.groupName === `Grupo ${apiGame.group}` &&
+                    ((m.homeTeam.name === teamNameMapping[apiGame.home_team_name_en] && m.awayTeam.name === teamNameMapping[apiGame.away_team_name_en]) ||
+                     (m.homeTeam.name === teamNameMapping[apiGame.away_team_name_en] && m.awayTeam.name === teamNameMapping[apiGame.home_team_name_en]))
+                );
+                let finalDate = apiGame.local_date;
+                if (Number(apiGame.id) >= 73 && apiGame.stadium_id) {
+                  finalDate = getSaoPauloDate(apiGame.local_date, apiGame.stadium_id.toString());
+                }
+                if (groupMatch) {
+                  datesMap[groupMatch.id] = finalDate;
+                } else {
+                  datesMap[apiGame.id] = finalDate;
+                }
+              }
+            });
+            setMatchDates(datesMap);
+          }
+        }
+      } catch (apiErr) {
+        console.warn("Could not fetch API games on init, using config defaults:", apiErr);
+      }
+
+      const resolved = resolveKnockoutMatches(apiGames);
+      setKnockoutMatches(resolved);
+
       // Executa a sincronização em segundo plano após o carregamento inicial
       setTimeout(() => {
         checkAndSyncApiResults(realResults, locked);
@@ -450,8 +806,80 @@ export default function App() {
     return { points: 0, type: "zero" }; // Errou tudo
   };
 
-  // Processa a classificação de todos os participantes
-  const getLeaderboard = (): ParticipantRanking[] => {
+  // Processa a classificação da Fase Final
+  const getLeaderboardFinal = (): ParticipantRanking[] => {
+    const leaderboard: ParticipantRanking[] = participants.map((name) => {
+      const userGuesses = allGuesses[name] || {};
+      let points = 0;
+      let exactScores = 0;
+      let outcomeOnly = 0;
+      let errors = 0;
+      let playedCount = 0;
+
+      knockoutMatches.forEach((match) => {
+        const guess = userGuesses[match.id];
+        const real = gabarito[match.id];
+        
+        const result = calculateMatchPoints(guess, real);
+        
+        if (result.type !== "none") {
+          playedCount++;
+          points += result.points;
+          if (result.type === "exact") {
+            exactScores++;
+          } else if (result.type === "outcome") {
+            outcomeOnly++;
+          } else if (result.type === "zero") {
+            errors++;
+          }
+        }
+      });
+
+      // Bônus de Campeão (+5 pontos)
+      const userChamp = userGuesses["cup_champion"];
+      const realChamp = gabarito["cup_champion"];
+      if (userChamp && realChamp && userChamp === realChamp) {
+        points += 5;
+      }
+
+      // Bônus de Vice-Campeão (+3 pontos)
+      const userSecond = userGuesses["cup_second"];
+      const realSecond = gabarito["cup_second"];
+      if (userSecond && realSecond && userSecond === realSecond) {
+        points += 3;
+      }
+
+      // Bônus de Terceiro Lugar (+2 pontos)
+      const userThird = userGuesses["cup_third"];
+      const realThird = gabarito["cup_third"];
+      if (userThird && realThird && userThird === realThird) {
+        points += 2;
+      }
+
+      return {
+        name,
+        points,
+        exactScores,
+        outcomeOnly,
+        errors,
+        playedCount
+      };
+    });
+
+    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético
+    return leaderboard.sort((a, b) => {
+      if (b.points !== a.points) {
+        return b.points - a.points;
+      }
+      if (b.exactScores !== a.exactScores) {
+        return b.exactScores - a.exactScores;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  };
+
+  // Processa a classificação da Fase de Grupos
+  const getLeaderboardGroups = (): ParticipantRanking[] => {
     const leaderboard: ParticipantRanking[] = participants.map((name) => {
       const userGuesses = allGuesses[name] || {};
       let points = 0;
@@ -504,6 +932,80 @@ export default function App() {
       }
       return a.name.localeCompare(b.name);
     });
+  };
+
+  // Trata alteração no palpite do Pódio da Copa (1º, 2º ou 3º lugares)
+  const handlePodiumChange = (place: "first" | "second" | "third", teamName: string, type: "palpite" | "gabarito") => {
+    const key = place === "first" ? "cup_champion" : place === "second" ? "cup_second" : "cup_third";
+    if (type === "palpite") {
+      const updated = {
+        ...tempGuesses,
+        [key]: teamName === "" ? null : teamName
+      };
+      setTempGuesses(updated);
+    } else {
+      const updated = {
+        ...tempGabarito,
+        [key]: teamName === "" ? null : teamName
+      };
+      setTempGabarito(updated);
+    }
+    setHasChanges(true);
+  };
+
+  // Trata o bloqueio voluntário/manual de um palpite
+  const handleToggleManualLock = (matchId: string) => {
+    const guess = tempGuesses[matchId] || allGuesses[selectedUser]?.[matchId];
+    if (!guess || guess.home === null || guess.away === null) {
+      showToast("Preencha o palpite antes de travar!", "error");
+      return;
+    }
+    
+    setTempGuesses(prev => {
+      const key = `MANUAL_LOCKED_${matchId}`;
+      const isLocked = prev[key] === true || (prev[key] === undefined && allGuesses[selectedUser]?.[key] === true);
+      const updated = {
+        ...prev,
+        [key]: !isLocked
+      };
+      return updated;
+    });
+    setHasChanges(true);
+  };
+
+  // Trata o clique em um time para avançar na árvore
+  const handleTeamClick = (matchId: string, teamName: string, type: "palpite" | "gabarito") => {
+    if (type === "gabarito") {
+      if (!isAdminAuthenticated) return;
+      const match = knockoutMatches.find(m => m.id === matchId);
+      if (!match || match.homeTeam.code === "" || match.awayTeam.code === "") return;
+      
+      const currentWinner = tempGabarito[`WINNER_${matchId}`] || gabarito[`WINNER_${matchId}`] || "";
+      const newWinner = currentWinner === teamName ? "" : teamName;
+      
+      setTempGabarito(prev => ({
+        ...prev,
+        [`WINNER_${matchId}`]: newWinner
+      }));
+      setHasChanges(true);
+    } else {
+      const started = isMatchStarted(matchId);
+      const isManuallyLocked = tempGuesses[`MANUAL_LOCKED_${matchId}`] === true || (tempGuesses[`MANUAL_LOCKED_${matchId}`] === undefined && allGuesses[selectedUser]?.[`MANUAL_LOCKED_${matchId}`] === true);
+      const isLocked = started || guessesLocked || isManuallyLocked;
+      if (isLocked) return;
+      
+      const match = getUserKnockoutMatches(selectedUser).find(m => m.id === matchId);
+      if (!match || match.homeTeam.code === "" || match.awayTeam.code === "") return;
+      
+      const currentWinner = tempGuesses[`WINNER_${matchId}`] || allGuesses[selectedUser]?.[`WINNER_${matchId}`] || "";
+      const newWinner = currentWinner === teamName ? "" : teamName;
+      
+      setTempGuesses(prev => ({
+        ...prev,
+        [`WINNER_${matchId}`]: newWinner
+      }));
+      setHasChanges(true);
+    }
   };
 
   // Trata alterações nos inputs de placar (Palpites ou Gabarito)
@@ -566,59 +1068,7 @@ export default function App() {
     }
   };
 
-  // Envia e trava os palpites de hoje para o participante
-  const submitAndLockTodayGuesses = async () => {
-    // Encontra todos os jogos de hoje
-    const todayMatches = matchesList.filter((m) => isMatchToday(m.id) && !isMatchExcluded(matchDates[m.id]));
-    
-    // Verifica se todos têm placar preenchido
-    const missingGuesses = todayMatches.filter((m) => {
-      const g = tempGuesses[m.id] || allGuesses[selectedUser]?.[m.id];
-      return !g || g.home === null || g.away === null;
-    });
-    
-    if (missingGuesses.length > 0) {
-      if (!confirm(`Você ainda não preencheu todos os jogos de hoje. Deseja enviar mesmo assim? (Os jogos sem palpites contarão como 0 pontos e não poderão ser preenchidos depois)`)) {
-        return;
-      }
-    } else {
-      if (!confirm(`Tem certeza que deseja ENVIAR e TRAVAR os palpites de hoje para ${selectedUser}? Após a confirmação, os palpites de hoje NÃO poderão mais ser alterados!`)) {
-        return;
-      }
-    }
-    
-    setSaving(true);
-    try {
-      const updatedGuesses = {
-        ...(tempGuesses || allGuesses[selectedUser] || {}),
-        "TODAY_LOCKED": { home: 1, away: 1 }
-      };
-      
-      const { error } = await supabase
-        .from("user_guesses")
-        .upsert({
-          username: selectedUser,
-          guesses: updatedGuesses,
-          updated_at: new Date().toISOString()
-        });
-        
-      if (error) throw error;
-      
-      setAllGuesses((prev) => ({
-        ...prev,
-        [selectedUser]: updatedGuesses
-      }));
-      setTempGuesses(updatedGuesses);
-      setHasChanges(false);
-      
-      showToast("Palpites de hoje enviados e travados com sucesso!", "success");
-    } catch (err) {
-      console.error("Erro ao travar palpites:", err);
-      showToast("Não foi possível enviar os palpites.", "error");
-    } finally {
-      setSaving(false);
-    }
-  };
+
 
   // Salva o gabarito oficial no Supabase
   const saveGabarito = async () => {
@@ -673,7 +1123,7 @@ export default function App() {
 
   // Descarta alterações temporárias
   const discardChanges = () => {
-    if (activeTab === "palpites") {
+    if (activeTab === "palpites_final" || activeTab === "grupos") {
       setTempGuesses(allGuesses[selectedUser] || {});
     } else if (activeTab === "gabarito") {
       setTempGabarito(gabarito);
@@ -681,6 +1131,14 @@ export default function App() {
     }
     setHasChanges(false);
     showToast("Alterações descartadas.", "success");
+  };
+
+  const isPodiumLocked = (): boolean => {
+    // Fuso de São Paulo (GMT-3). Prazo: 28/06/2026 às 23:59:59.
+    // Em UTC, isso é 29/06/2026 às 02:59:59 (pois BRT é UTC-3).
+    const deadline = new Date("2026-06-29T02:59:59Z");
+    const now = new Date();
+    return now >= deadline;
   };
 
   const isMatchToday = (matchId: string): boolean => {
@@ -752,9 +1210,10 @@ export default function App() {
         return dateA - dateB;
       })
     : filteredMatches;
-  const ranking = getLeaderboard();
-  const topThree = ranking.slice(0, 3);
-  const activeMatchesCount = matchesList.filter((m) => !isMatchExcluded(matchDates[m.id])).length;
+  const rankingFinal = getLeaderboardFinal();
+  const rankingGroups = getLeaderboardGroups();
+  const activeRanking = (activeTab === "ranking_final" || activeTab === "palpites_final") ? rankingFinal : rankingGroups;
+  const topThree = activeRanking.slice(0, 3);
 
   // Calcula a classificação de um grupo específico
   const getGroupStandings = (groupLetter: string, guesses: Record<string, Score>) => {
@@ -847,6 +1306,196 @@ export default function App() {
   // Lista dos grupos disponíveis (A a L) para o filtro
   const groupLetters = Array.from({ length: 12 }, (_, i) => String.fromCharCode(65 + i));
 
+  // Renderizador unificado para cartões de jogos do Mata-Mata
+  const renderKnockoutMatchCard = (match: KnockoutMatch, type: "palpite" | "gabarito") => {
+    const started = isMatchStarted(match.id);
+    const isDecided = match.homeTeam.code !== "" && match.awayTeam.code !== "";
+    
+    // Bloqueio voluntário (cadeado)
+    const isManuallyLocked = type === "palpite" && (
+      tempGuesses[`MANUAL_LOCKED_${match.id}`] === true ||
+      (tempGuesses[`MANUAL_LOCKED_${match.id}`] === undefined && allGuesses[selectedUser]?.[`MANUAL_LOCKED_${match.id}`] === true)
+    );
+
+    const isLocked = type === "gabarito" 
+      ? !isAdminAuthenticated 
+      : (started || !isDecided || guessesLocked || isManuallyLocked);
+    
+    const guess = type === "palpite" 
+      ? (tempGuesses[match.id] || { home: null, away: null })
+      : (tempGabarito[match.id] || { home: null, away: null });
+      
+    const realResult = gabarito[match.id];
+    
+    // Para visualização de palpites, calcula pontos se o jogo já aconteceu
+    const pointsResult = type === "palpite" 
+      ? calculateMatchPoints(guess, realResult)
+      : { points: 0, type: "none" };
+
+    // Vencedor selecionado (para destaque visual no Flat Design e clonagem)
+    const selectedWinner = type === "palpite"
+      ? (tempGuesses[`WINNER_${match.id}`] || allGuesses[selectedUser]?.[`WINNER_${match.id}`] || (
+          guess && guess.home !== null && guess.away !== null && guess.home !== guess.away
+            ? (guess.home > guess.away ? match.homeTeam.name : match.awayTeam.name)
+            : ""
+        ))
+      : (tempGabarito[`WINNER_${match.id}`] || gabarito[`WINNER_${match.id}`] || (
+          guess && guess.home !== null && guess.away !== null && guess.home !== guess.away
+            ? (guess.home > guess.away ? match.homeTeam.name : match.awayTeam.name)
+            : ""
+        ));
+
+    return (
+      <div key={match.id} className={`match-card ${isLocked ? "locked-match" : ""}`} style={{ opacity: isLocked ? 0.9 : 1 }}>
+        <div className="match-header">
+          <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {match.groupName}
+            {started && <Lock size={12} style={{ color: "var(--error)" }} />}
+          </span>
+          
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {/* Botão de Cadeado Manual */}
+            {type === "palpite" && isDecided && !started && (
+              <button
+                type="button"
+                onClick={() => handleToggleManualLock(match.id)}
+                className="lock-toggle-btn"
+                title={isManuallyLocked ? "Desbloquear palpite" : "Travar palpite para não alterar por engano"}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  color: isManuallyLocked ? "var(--secondary)" : "var(--text-muted)",
+                  transition: "color 0.2s"
+                }}
+              >
+                {isManuallyLocked ? <Lock size={15} /> : <Unlock size={15} style={{ opacity: 0.5 }} />}
+              </button>
+            )}
+
+            {type === "palpite" ? (
+              !isDecided ? null : started ? (
+                <span className="points-badge" style={{ background: "rgba(239, 68, 68, 0.12)", color: "var(--error)", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
+                  Jogo Iniciado
+                </span>
+              ) : pointsResult.type !== "none" && (
+                <span className={`points-badge ${pointsResult.type}`}>
+                  {pointsResult.points} {pointsResult.points === 1 ? "Ponto" : "Pontos"}
+                </span>
+              )
+            ) : (
+              !isDecided ? null : (
+                <span style={{ color: isAdminAuthenticated ? "var(--secondary)" : "var(--primary)", fontWeight: 700, fontSize: "0.75rem" }}>
+                  Gabarito Oficial
+                </span>
+              )
+            )}
+          </div>
+        </div>
+        
+        <div className="match-body">
+          {/* Time de Casa */}
+          <div 
+            className={`team-container home ${selectedWinner === match.homeTeam.name ? "selected-winner" : ""}`}
+            onClick={() => handleTeamClick(match.id, match.homeTeam.name, type)}
+            style={{ cursor: (type === "palpite" && !isLocked && match.homeTeam.code !== "") ? "pointer" : (type === "gabarito" && isAdminAuthenticated && match.homeTeam.code !== "") ? "pointer" : "default" }}
+          >
+            {match.homeTeam.code ? (
+              <img
+                src={getFlagUrl(match.homeTeam.code)}
+                alt={match.homeTeam.name}
+                className="flag-icon"
+              />
+            ) : (
+              <div className="flag-placeholder">?</div>
+            )}
+            <span className="team-name" title={match.homeTeam.name}>
+              {match.homeTeam.name}
+            </span>
+          </div>
+
+          {/* Inputs do Placar */}
+          <div className="score-container">
+            <input
+              type="number"
+              className="score-input"
+              style={type === "gabarito" ? { borderColor: isAdminAuthenticated ? "rgba(139, 239, 26, 0.4)" : "rgba(255,255,255,0.05)" } : undefined}
+              min="0"
+              placeholder="-"
+              value={guess.home ?? ""}
+              onChange={(e) =>
+                handleScoreChange(match.id, "home", e.target.value, type)
+              }
+              disabled={isLocked}
+            />
+            <span className="score-divider">x</span>
+            <input
+              type="number"
+              className="score-input"
+              style={type === "gabarito" ? { borderColor: isAdminAuthenticated ? "rgba(139, 239, 26, 0.4)" : "rgba(255,255,255,0.05)" } : undefined}
+              min="0"
+              placeholder="-"
+              value={guess.away ?? ""}
+              onChange={(e) =>
+                handleScoreChange(match.id, "away", e.target.value, type)
+              }
+              disabled={isLocked}
+            />
+          </div>
+
+          {/* Time Visitante */}
+          <div 
+            className={`team-container away ${selectedWinner === match.awayTeam.name ? "selected-winner" : ""}`}
+            onClick={() => handleTeamClick(match.id, match.awayTeam.name, type)}
+            style={{ cursor: (type === "palpite" && !isLocked && match.awayTeam.code !== "") ? "pointer" : (type === "gabarito" && isAdminAuthenticated && match.awayTeam.code !== "") ? "pointer" : "default" }}
+          >
+            {match.awayTeam.code ? (
+              <img
+                src={getFlagUrl(match.awayTeam.code)}
+                alt={match.awayTeam.name}
+                className="flag-icon"
+              />
+            ) : (
+              <div className="flag-placeholder">?</div>
+            )}
+            <span className="team-name" title={match.awayTeam.name}>
+              {match.awayTeam.name}
+            </span>
+          </div>
+        </div>
+
+        {/* Alerta de Empate (Necessidade de escolher classificado) */}
+        {type === "palpite" && guess.home !== null && guess.away !== null && guess.home === guess.away && !tempGuesses[`WINNER_${match.id}`] && !allGuesses[selectedUser]?.[`WINNER_${match.id}`] && (
+          <div className="tie-warning" style={{ fontSize: "0.6rem", color: "#f59e0b", textAlign: "center", marginTop: "4px", fontWeight: 700 }}>
+            ⚠️ Clique em um time para avançá-lo!
+          </div>
+        )}
+        {type === "gabarito" && isAdminAuthenticated && guess.home !== null && guess.away !== null && guess.home === guess.away && !tempGabarito[`WINNER_${match.id}`] && !gabarito[`WINNER_${match.id}`] && (
+          <div className="tie-warning" style={{ fontSize: "0.6rem", color: "#f59e0b", textAlign: "center", marginTop: "4px", fontWeight: 700 }}>
+            ⚠️ Clique para definir o classificado!
+          </div>
+        )}
+
+        {/* Data e hora do jogo */}
+        {matchDates[match.id] && (
+          <div className="match-date-info">
+            📅 {formatMatchDate(matchDates[match.id])}
+          </div>
+        )}
+
+        {/* Informação sobre o gabarito oficial */}
+        {type === "palpite" && realResult && realResult.home !== null && realResult.away !== null && (
+          <div className="gabarito-score-info">
+            Resultado Real: <strong>{realResult.home} x {realResult.away}</strong>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="app-container">
       {/* Toast Notification */}
@@ -859,15 +1508,17 @@ export default function App() {
 
       {/* Header */}
       <header className="app-header">
-        <div className="header-badge">Fase de Grupos</div>
+        <div className="header-badge">
+          {activeTab === "grupos" ? "Fase de Grupos (Histórico)" : "Fase Final (Mata-Mata)"}
+        </div>
         <h1 className="app-title">🏆 Bolão do PiPA copa 2026</h1>
         <p className="app-subtitle">Será que o Zé vai ganhar?</p>
-        {activeTab === "ranking" && (
+        {(activeTab === "ranking_final" || activeTab === "grupos") && (
           <div className="print-user-title print-only">
             Classificação Geral
           </div>
         )}
-        {activeTab === "palpites" && (
+        {(activeTab === "palpites_final" || activeTab === "grupos") && (
           <div className="print-user-title print-only">
             {participantAvatars[selectedUser] && (
               <img 
@@ -889,36 +1540,52 @@ export default function App() {
       {/* Navegação por Abas */}
       <nav className="tabs-navigation">
         <button 
-          className={`tab-btn ${activeTab === "ranking" ? "active" : ""}`}
+          className={`tab-btn ${activeTab === "ranking_final" ? "active" : ""}`}
           onClick={() => {
             if (hasChanges) {
               if (confirm("Você tem alterações não salvas. Deseja mudar de aba e perder as edições?")) {
                 setHasChanges(false);
-                setActiveTab("ranking");
+                setActiveTab("ranking_final");
               }
             } else {
-              setActiveTab("ranking");
+              setActiveTab("ranking_final");
             }
           }}
         >
           <Trophy size={18} />
-          Classificação
+          Classificação (Mata-Mata)
         </button>
         <button 
-          className={`tab-btn ${activeTab === "palpites" ? "active" : ""}`}
+          className={`tab-btn ${activeTab === "palpites_final" ? "active" : ""}`}
           onClick={() => {
             if (hasChanges) {
               if (confirm("Você tem alterações não salvas. Deseja mudar de aba e perder as edições?")) {
                 setHasChanges(false);
-                setActiveTab("palpites");
+                setActiveTab("palpites_final");
               }
             } else {
-              setActiveTab("palpites");
+              setActiveTab("palpites_final");
             }
           }}
         >
           <FileText size={18} />
-          Meus Palpites
+          Meus Palpites (Mata-Mata)
+        </button>
+        <button 
+          className={`tab-btn ${activeTab === "grupos" ? "active" : ""}`}
+          onClick={() => {
+            if (hasChanges) {
+              if (confirm("Você tem alterações não salvas. Deseja mudar de aba e perder as edições?")) {
+                setHasChanges(false);
+                setActiveTab("grupos");
+              }
+            } else {
+              setActiveTab("grupos");
+            }
+          }}
+        >
+          <Crown size={18} />
+          Fase de Grupos
         </button>
         <button 
           className={`tab-btn ${activeTab === "gabarito" ? "active" : ""}`}
@@ -945,10 +1612,9 @@ export default function App() {
         </div>
       ) : (
         <>
-          {/* ABA 1: CLASSIFICAÇÃO / RANKING */}
-          {activeTab === "ranking" && (
+          {/* ABA 1: CLASSIFICAÇÃO / RANKING (FASE FINAL) */}
+          {activeTab === "ranking_final" && (
             <div className="ranking-container">
-              
               <div className="pdf-actions no-print">
                 <button className="pdf-btn" onClick={() => window.print()}>
                   <FileText size={16} />
@@ -956,63 +1622,173 @@ export default function App() {
                 </button>
               </div>
               
-              {/* Podium Visual (Para Top 3) */}
+              {/* Podium Visual (Para Top 3 - Fase Final) */}
               <div className="podium-section">
-                
                 {/* 2º Lugar */}
-                {topThree[1] && (
-                  <div className="podium-card second">
-                    <div className="podium-avatar" style={{ padding: participantAvatars[topThree[1].name] ? "0" : undefined }}>
-                      {participantAvatars[topThree[1].name] ? (
-                        <img src={participantAvatars[topThree[1].name]} alt={topThree[1].name} className="avatar-img" />
-                      ) : (
-                        topThree[1].name.substring(0, 2).toUpperCase()
+                {topThree[1] && (() => {
+                  const userGuesses = allGuesses[topThree[1].name] || {};
+                  const userChamp = userGuesses["cup_champion"];
+                  const userSecond = userGuesses["cup_second"];
+                  const userThird = userGuesses["cup_third"];
+                  const champTeam = userChamp ? allTeamsList.find(t => t.name === userChamp) : null;
+                  const secondTeam = userSecond ? allTeamsList.find(t => t.name === userSecond) : null;
+                  const thirdTeam = userThird ? allTeamsList.find(t => t.name === userThird) : null;
+                  
+                  return (
+                    <div className="podium-card second">
+                      <div className="podium-avatar" style={{ padding: participantAvatars[topThree[1].name] ? "0" : undefined }}>
+                        {participantAvatars[topThree[1].name] ? (
+                          <img src={participantAvatars[topThree[1].name]} alt={topThree[1].name} className="avatar-img" />
+                        ) : (
+                          topThree[1].name.substring(0, 2).toUpperCase()
+                        )}
+                        <span className="badge-place">2</span>
+                      </div>
+                      <h3 className="podium-name">{topThree[1].name}</h3>
+                      <p className="podium-points">{topThree[1].points} pts</p>
+                      <p className="podium-stats">{topThree[1].exactScores} placares exatos</p>
+                      
+                      {/* Pódio de Palpite do Participante */}
+                      {(userChamp || userSecond || userThird) && (
+                        <div className="user-podium-badges" style={{ display: "flex", gap: "4px", justifyContent: "center", marginTop: "10px" }}>
+                          {userChamp && (
+                            <span className="mini-podium-badge first" title={`1º Lugar (Campeão): ${userChamp}`}>
+                              👑 {champTeam?.code ? (
+                                <img src={getFlagUrl(champTeam.code)} alt={userChamp} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                          {userSecond && (
+                            <span className="mini-podium-badge second" title={`2º Lugar (Vice): ${userSecond}`}>
+                              🥈 {secondTeam?.code ? (
+                                <img src={getFlagUrl(secondTeam.code)} alt={userSecond} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                          {userThird && (
+                            <span className="mini-podium-badge third" title={`3º Lugar: ${userThird}`}>
+                              🥉 {thirdTeam?.code ? (
+                                <img src={getFlagUrl(thirdTeam.code)} alt={userThird} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                        </div>
                       )}
-                      <span className="badge-place">2</span>
                     </div>
-                    <h3 className="podium-name">{topThree[1].name}</h3>
-                    <p className="podium-points">{topThree[1].points} pts</p>
-                    <p className="podium-stats">{topThree[1].exactScores} placares exatos</p>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* 1º Lugar */}
-                {topThree[0] && (
-                  <div className="podium-card first">
-                    <Crown className="crown-icon" />
-                    <div className="podium-avatar" style={{ padding: participantAvatars[topThree[0].name] ? "0" : undefined }}>
-                      {participantAvatars[topThree[0].name] ? (
-                        <img src={participantAvatars[topThree[0].name]} alt={topThree[0].name} className="avatar-img" />
-                      ) : (
-                        topThree[0].name.substring(0, 2).toUpperCase()
+                {topThree[0] && (() => {
+                  const userGuesses = allGuesses[topThree[0].name] || {};
+                  const userChamp = userGuesses["cup_champion"];
+                  const userSecond = userGuesses["cup_second"];
+                  const userThird = userGuesses["cup_third"];
+                  const champTeam = userChamp ? allTeamsList.find(t => t.name === userChamp) : null;
+                  const secondTeam = userSecond ? allTeamsList.find(t => t.name === userSecond) : null;
+                  const thirdTeam = userThird ? allTeamsList.find(t => t.name === userThird) : null;
+                  
+                  return (
+                    <div className="podium-card first">
+                      <Crown className="crown-icon" />
+                      <div className="podium-avatar" style={{ padding: participantAvatars[topThree[0].name] ? "0" : undefined }}>
+                        {participantAvatars[topThree[0].name] ? (
+                          <img src={participantAvatars[topThree[0].name]} alt={topThree[0].name} className="avatar-img" />
+                        ) : (
+                          topThree[0].name.substring(0, 2).toUpperCase()
+                        )}
+                        <span className="badge-place">1</span>
+                      </div>
+                      <h3 className="podium-name">{topThree[0].name}</h3>
+                      <p className="podium-points">{topThree[0].points} pts</p>
+                      <p className="podium-stats">{topThree[0].exactScores} placares exatos</p>
+                      
+                      {/* Pódio de Palpite do Participante */}
+                      {(userChamp || userSecond || userThird) && (
+                        <div className="user-podium-badges" style={{ display: "flex", gap: "4px", justifyContent: "center", marginTop: "10px" }}>
+                          {userChamp && (
+                            <span className="mini-podium-badge first" title={`1º Lugar (Campeão): ${userChamp}`}>
+                              👑 {champTeam?.code ? (
+                                <img src={getFlagUrl(champTeam.code)} alt={userChamp} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                          {userSecond && (
+                            <span className="mini-podium-badge second" title={`2º Lugar (Vice): ${userSecond}`}>
+                              🥈 {secondTeam?.code ? (
+                                <img src={getFlagUrl(secondTeam.code)} alt={userSecond} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                          {userThird && (
+                            <span className="mini-podium-badge third" title={`3º Lugar: ${userThird}`}>
+                              🥉 {thirdTeam?.code ? (
+                                <img src={getFlagUrl(thirdTeam.code)} alt={userThird} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                        </div>
                       )}
-                      <span className="badge-place">1</span>
                     </div>
-                    <h3 className="podium-name">{topThree[0].name}</h3>
-                    <p className="podium-points">{topThree[0].points} pts</p>
-                    <p className="podium-stats">{topThree[0].exactScores} placares exatos</p>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* 3º Lugar */}
-                {topThree[2] && (
-                  <div className="podium-card third">
-                    <div className="podium-avatar" style={{ padding: participantAvatars[topThree[2].name] ? "0" : undefined }}>
-                      {participantAvatars[topThree[2].name] ? (
-                        <img src={participantAvatars[topThree[2].name]} alt={topThree[2].name} className="avatar-img" />
-                      ) : (
-                        topThree[2].name.substring(0, 2).toUpperCase()
+                {topThree[2] && (() => {
+                  const userGuesses = allGuesses[topThree[2].name] || {};
+                  const userChamp = userGuesses["cup_champion"];
+                  const userSecond = userGuesses["cup_second"];
+                  const userThird = userGuesses["cup_third"];
+                  const champTeam = userChamp ? allTeamsList.find(t => t.name === userChamp) : null;
+                  const secondTeam = userSecond ? allTeamsList.find(t => t.name === userSecond) : null;
+                  const thirdTeam = userThird ? allTeamsList.find(t => t.name === userThird) : null;
+                  
+                  return (
+                    <div className="podium-card third">
+                      <div className="podium-avatar" style={{ padding: participantAvatars[topThree[2].name] ? "0" : undefined }}>
+                        {participantAvatars[topThree[2].name] ? (
+                          <img src={participantAvatars[topThree[2].name]} alt={topThree[2].name} className="avatar-img" />
+                        ) : (
+                          topThree[2].name.substring(0, 2).toUpperCase()
+                        )}
+                        <span className="badge-place">3</span>
+                      </div>
+                      <h3 className="podium-name">{topThree[2].name}</h3>
+                      <p className="podium-points">{topThree[2].points} pts</p>
+                      <p className="podium-stats">{topThree[2].exactScores} placares exatos</p>
+                      
+                      {/* Pódio de Palpite do Participante */}
+                      {(userChamp || userSecond || userThird) && (
+                        <div className="user-podium-badges" style={{ display: "flex", gap: "4px", justifyContent: "center", marginTop: "10px" }}>
+                          {userChamp && (
+                            <span className="mini-podium-badge first" title={`1º Lugar (Campeão): ${userChamp}`}>
+                              👑 {champTeam?.code ? (
+                                <img src={getFlagUrl(champTeam.code)} alt={userChamp} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                          {userSecond && (
+                            <span className="mini-podium-badge second" title={`2º Lugar (Vice): ${userSecond}`}>
+                              🥈 {secondTeam?.code ? (
+                                <img src={getFlagUrl(secondTeam.code)} alt={userSecond} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                          {userThird && (
+                            <span className="mini-podium-badge third" title={`3º Lugar: ${userThird}`}>
+                              🥉 {thirdTeam?.code ? (
+                                <img src={getFlagUrl(thirdTeam.code)} alt={userThird} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                              ) : "?"}
+                            </span>
+                          )}
+                        </div>
                       )}
-                      <span className="badge-place">3</span>
                     </div>
-                    <h3 className="podium-name">{topThree[2].name}</h3>
-                    <p className="podium-points">{topThree[2].points} pts</p>
-                    <p className="podium-stats">{topThree[2].exactScores} placares exatos</p>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
-              {/* Tabela Completa de Classificação */}
+              {/* Tabela Completa de Classificação (Fase Final) */}
               <div className="ranking-table-card">
                 <table className="ranking-table">
                   <thead>
@@ -1028,79 +1804,848 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ranking.map((user, idx) => (
-                      <tr key={user.name} className="ranking-row">
-                        <td>
-                          <span className={`position-badge ${
-                            idx === 0 ? "first-pos" : idx === 1 ? "second-pos" : idx === 2 ? "third-pos" : ""
-                          }`}>
-                            {idx + 1}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="participant-name-col">
-                            <div className="participant-avatar-sm" style={{
-                                background: idx === 0 ? "#f59e0b" : idx === 1 ? "#cbd5e1" : idx === 2 ? "#b45309" : "#1e293b",
-                                padding: participantAvatars[user.name] ? "0" : undefined
-                              }}>
-                              {participantAvatars[user.name] ? (
-                                <img src={participantAvatars[user.name]} alt={user.name} className="avatar-img" />
-                              ) : (
-                                user.name.substring(0,2).toUpperCase()
-                              )}
+                    {rankingFinal.map((user, idx) => {
+                      const userGuesses = allGuesses[user.name] || {};
+                      const userChamp = userGuesses["cup_champion"];
+                      const userSecond = userGuesses["cup_second"];
+                      const userThird = userGuesses["cup_third"];
+                      
+                      const champTeam = userChamp ? allTeamsList.find(t => t.name === userChamp) : null;
+                      const secondTeam = userSecond ? allTeamsList.find(t => t.name === userSecond) : null;
+                      const thirdTeam = userThird ? allTeamsList.find(t => t.name === userThird) : null;
+                      
+                      return (
+                        <tr key={user.name} className="ranking-row">
+                          <td>
+                            <span className={`position-badge ${
+                              idx === 0 ? "first-pos" : idx === 1 ? "second-pos" : idx === 2 ? "third-pos" : ""
+                            }`}>
+                              {idx + 1}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="participant-name-col">
+                              <div className="participant-avatar-sm" style={{
+                                  background: idx === 0 ? "#f59e0b" : idx === 1 ? "#cbd5e1" : idx === 2 ? "#b45309" : "#1e293b",
+                                  padding: participantAvatars[user.name] ? "0" : undefined
+                                }}>
+                                {participantAvatars[user.name] ? (
+                                  <img src={participantAvatars[user.name]} alt={user.name} className="avatar-img" />
+                                ) : (
+                                  user.name.substring(0, 2).toUpperCase()
+                                )}
+                              </div>
+                              <div>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                  <span style={{ fontWeight: 600 }}>{user.name}</span>
+                                  
+                                  {/* Pódio do Participante */}
+                                  {(userChamp || userSecond || userThird) && (
+                                    <div className="user-podium-badges" style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                      {userChamp && (
+                                        <span className="leaderboard-champion-badge" title={`1º Lugar (Campeão): ${userChamp}`}>
+                                          👑 {champTeam?.code && (
+                                            <img src={getFlagUrl(champTeam.code)} alt={userChamp} className="flag-icon-xs" style={{ width: "16px", height: "11px", marginRight: "4px", borderRadius: "1px", verticalAlign: "middle" }} />
+                                          )}
+                                          <strong>{userChamp}</strong>
+                                        </span>
+                                      )}
+                                      {userSecond && (
+                                        <span className="mini-podium-badge second" title={`2º Lugar (Vice): ${userSecond}`}>
+                                          🥈 {secondTeam?.code ? (
+                                            <img src={getFlagUrl(secondTeam.code)} alt={userSecond} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                                          ) : "?"}
+                                        </span>
+                                      )}
+                                      {userThird && (
+                                        <span className="mini-podium-badge third" title={`3º Lugar: ${userThird}`}>
+                                          🥉 {thirdTeam?.code ? (
+                                            <img src={getFlagUrl(thirdTeam.code)} alt={userThird} className="flag-icon-xs" style={{ width: "16px", height: "11px", borderRadius: "1px", verticalAlign: "middle" }} />
+                                          ) : "?"}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                {idx === 0 && <span style={{ fontSize: "0.7rem", color: "var(--secondary)", fontWeight: 700 }}>★ LÍDER ATUAL</span>}
+                              </div>
                             </div>
-                            <div>
-                              <div style={{ fontWeight: 600 }}>{user.name}</div>
-                              {idx === 0 && <span style={{ fontSize: "0.7rem", color: "var(--secondary)", fontWeight: 700 }}>★ LÍDER ATUAL</span>}
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ textAlign: "center" }} className="points-val">
-                          {user.points}
-                        </td>
-                        <td style={{ textAlign: "center" }} className="stats-detail">
-                          {user.exactScores}
-                        </td>
-                        <td style={{ textAlign: "center" }} className="stats-detail">
-                          {user.outcomeOnly}
-                        </td>
-                        <td style={{ textAlign: "center", color: "rgba(239, 68, 68, 0.7)" }} className="stats-detail">
-                          {user.errors}
-                        </td>
-                        <td style={{ textAlign: "center" }} className="stats-detail">
-                          {user.playedCount} / {activeMatchesCount}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <button 
-                            className="detail-btn"
-                            onClick={() => setSelectedDetailUser(user.name)}
-                            title={`Ver palpites de ${user.name}`}
-                          >
-                            <Eye size={14} />
-                            <span>Ver</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td style={{ textAlign: "center" }} className="points-val">
+                            {user.points}
+                          </td>
+                          <td style={{ textAlign: "center" }} className="stats-detail">
+                            {user.exactScores}
+                          </td>
+                          <td style={{ textAlign: "center" }} className="stats-detail">
+                            {user.outcomeOnly}
+                          </td>
+                          <td style={{ textAlign: "center", color: "rgba(239, 68, 68, 0.7)" }} className="stats-detail">
+                            {user.errors}
+                          </td>
+                          <td style={{ textAlign: "center" }} className="stats-detail">
+                            {user.playedCount} / {knockoutMatches.length}
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <button 
+                              className="detail-btn"
+                              onClick={() => {
+                                setSelectedDetailUser(user.name);
+                                setModalPhase("final");
+                              }}
+                              title={`Ver palpites de ${user.name}`}
+                            >
+                              <Eye size={14} />
+                              <span>Ver</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
 
-              {/* Seção da Classificação Geral dos Grupos baseada no Gabarito Oficial */}
-              <div style={{ marginTop: "40px" }} className="no-print">
-                <h2 style={{ 
-                  fontSize: "1.4rem", 
-                  fontWeight: "800", 
-                  marginBottom: "20px", 
-                  textAlign: "center",
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "10px"
-                }}>
-                  📊 Classificação Oficial dos Grupos
-                </h2>
+          {/* ABA 2: MEUS PALPITES (FASE FINAL) */}
+          {activeTab === "palpites_final" && (
+            <div>
+              {/* CARD PALPITE PÓDIO DA COPA */}
+              {(() => {
+                const userChamp = tempGuesses["cup_champion"] || allGuesses[selectedUser]?.["cup_champion"] || "";
+                const userSecond = tempGuesses["cup_second"] || allGuesses[selectedUser]?.["cup_second"] || "";
+                const userThird = tempGuesses["cup_third"] || allGuesses[selectedUser]?.["cup_third"] || "";
+
+                const champTeam = allTeamsList.find(t => t.name === userChamp);
+                const secondTeam = allTeamsList.find(t => t.name === userSecond);
+                const thirdTeam = allTeamsList.find(t => t.name === userThird);
+                
+                const isLocked = isPodiumLocked();
+                
+                return (
+                  <div className="podium-card" style={{ border: isLocked ? "1px solid rgba(255,255,255,0.05)" : "1px solid var(--secondary)" }}>
+                    <div className="podium-card-header">
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <Trophy size={22} style={{ color: "#f59e0b" }} />
+                        <h3>Palpite do Pódio da Copa 🏆</h3>
+                      </div>
+                      {isLocked ? (
+                        <span className="locked-badge"><Lock size={12} /> Palpites Encerrados</span>
+                      ) : (
+                        <span className="unlocked-badge">⏳ Aberto até as 23:59 de hoje!</span>
+                      )}
+                    </div>
+                    
+                    <div className="podium-card-body">
+                      {/* Mensagem de prazo bem destacada */}
+                      <div className="podium-deadline-alert">
+                        ⚠️ Atenção: Os palpites do pódio (1º, 2º e 3º lugares) devem ser salvos até o final do dia de hoje (28/06/2026 às 23:59)!
+                      </div>
+
+                      <div className="podium-container">
+                        {/* 2º LUGAR - PRATA */}
+                        <div className="podium-block silver-block">
+                          <div className="podium-flag-wrapper">
+                            {secondTeam?.code ? (
+                              <img src={getFlagUrl(secondTeam.code)} alt={userSecond} className="podium-flag" />
+                            ) : (
+                              <div className="podium-flag-placeholder">?</div>
+                            )}
+                          </div>
+                          <select
+                            className="podium-select"
+                            value={userSecond}
+                            onChange={(e) => handlePodiumChange("second", e.target.value, "palpite")}
+                            disabled={isLocked}
+                          >
+                            <option value="">2º Lugar (Vice)...</option>
+                            {allTeamsList.map((t) => (
+                              <option key={t.name} value={t.name}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="podium-step step-silver">
+                            <span className="step-rank">2º</span>
+                            <span className="step-label">🥈 Vice (+3 pts)</span>
+                          </div>
+                        </div>
+
+                        {/* 1º LUGAR - OURO */}
+                        <div className="podium-block gold-block">
+                          <div className="podium-flag-wrapper">
+                            {champTeam?.code ? (
+                              <img src={getFlagUrl(champTeam.code)} alt={userChamp} className="podium-flag" />
+                            ) : (
+                              <div className="podium-flag-placeholder">?</div>
+                            )}
+                          </div>
+                          <select
+                            className="podium-select"
+                            value={userChamp}
+                            onChange={(e) => handlePodiumChange("first", e.target.value, "palpite")}
+                            disabled={isLocked}
+                          >
+                            <option value="">1º Lugar (Campeão)...</option>
+                            {allTeamsList.map((t) => (
+                              <option key={t.name} value={t.name}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="podium-step step-gold">
+                            <span className="step-rank">1º</span>
+                            <span className="step-label">👑 Campeão (+5 pts)</span>
+                          </div>
+                        </div>
+
+                        {/* 3º LUGAR - BRONZE */}
+                        <div className="podium-block bronze-block">
+                          <div className="podium-flag-wrapper">
+                            {thirdTeam?.code ? (
+                              <img src={getFlagUrl(thirdTeam.code)} alt={userThird} className="podium-flag" />
+                            ) : (
+                              <div className="podium-flag-placeholder">?</div>
+                            )}
+                          </div>
+                          <select
+                            className="podium-select"
+                            value={userThird}
+                            onChange={(e) => handlePodiumChange("third", e.target.value, "palpite")}
+                            disabled={isLocked}
+                          >
+                            <option value="">3º Lugar...</option>
+                            {allTeamsList.map((t) => (
+                              <option key={t.name} value={t.name}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="podium-step step-bronze">
+                            <span className="step-rank">3º</span>
+                            <span className="step-label">🥉 3º Lugar (+2 pts)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="pdf-actions no-print" style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px", marginTop: "20px" }}>
+                <button className="pdf-btn" onClick={() => window.print()}>
+                  <FileText size={16} />
+                  Salvar PDF dos Palpites ({selectedUser})
+                </button>
+                <div style={{ display: "flex", gap: "6px", marginLeft: "auto" }}>
+                  <button 
+                    className={`filter-btn ${viewMode === "chaveamento" ? "active" : ""}`}
+                    onClick={() => setViewMode("chaveamento")}
+                  >
+                    🌳 Visualização em Chaveamento
+                  </button>
+                  <button 
+                    className={`filter-btn ${viewMode === "grade" ? "active" : ""}`}
+                    onClick={() => setViewMode("grade")}
+                  >
+                    🎛️ Visualização em Grade
+                  </button>
+                </div>
+              </div>
+
+              {/* Barra de Filtros e Seletor de Nome (SÓ MOSTRA FILTRO DE RODADA SE ESTIVER EM MODO GRADE) */}
+              <div className="controls-bar">
+                <div className="user-selector-container">
+                  {participantAvatars[selectedUser] ? (
+                    <img 
+                      src={participantAvatars[selectedUser]} 
+                      alt={selectedUser} 
+                      className="avatar-img" 
+                      style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover", border: "1px solid var(--card-border)" }}
+                    />
+                  ) : (
+                    <div className="participant-avatar-sm" style={{ width: "30px", height: "30px", fontSize: "0.85rem", background: "#1e293b" }}>
+                      {selectedUser.substring(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="select-label">Quem é você?</span>
+                  <select
+                    className="custom-select"
+                    value={selectedUser}
+                    onChange={(e) => {
+                      if (hasChanges) {
+                        if (confirm("Você tem alterações não salvas de palpites. Deseja mudar de participante e perder as alterações?")) {
+                          setSelectedUser(e.target.value);
+                        }
+                      } else {
+                        setSelectedUser(e.target.value);
+                      }
+                    }}
+                  >
+                    {participants.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {viewMode === "grade" && (
+                  <div className="filters-container">
+                    <span className="select-label" style={{ alignSelf: "center" }}>Filtrar Rodada:</span>
+                    <button
+                      className={`filter-btn ${knockoutStageFilter === "all" ? "active" : ""}`}
+                      onClick={() => setKnockoutStageFilter("all")}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      className={`filter-btn ${knockoutStageFilter === "R32" ? "active" : ""}`}
+                      onClick={() => setKnockoutStageFilter("R32")}
+                    >
+                      16 avos (R32)
+                    </button>
+                    <button
+                      className={`filter-btn ${knockoutStageFilter === "R16" ? "active" : ""}`}
+                      onClick={() => setKnockoutStageFilter("R16")}
+                    >
+                      Oitavas (R16)
+                    </button>
+                    <button
+                      className={`filter-btn ${knockoutStageFilter === "QF" ? "active" : ""}`}
+                      onClick={() => setKnockoutStageFilter("QF")}
+                    >
+                      Quartas (QF)
+                    </button>
+                    <button
+                      className={`filter-btn ${knockoutStageFilter === "SF" ? "active" : ""}`}
+                      onClick={() => setKnockoutStageFilter("SF")}
+                    >
+                      Semifinal (SF)
+                    </button>
+                    <button
+                      className={`filter-btn ${knockoutStageFilter === "FINAL" ? "active" : ""}`}
+                      onClick={() => setKnockoutStageFilter("FINAL")}
+                    >
+                      Finais
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Grid ou Chaveamento de Partidas de Mata-Mata */}
+              {(() => {
+                const leftR32Ids = ["73", "75", "74", "77", "83", "84", "81", "82"];
+                const leftR16Ids = ["90", "89", "93", "94"];
+                const leftQFIds = ["97", "98"];
+                const leftSFIds = ["101"];
+                
+                const centerFinalIds = ["104", "103"];
+                
+                const rightSFIds = ["102"];
+                const rightQFIds = ["99", "100"];
+                const rightR16Ids = ["91", "92", "95", "96"];
+                const rightR32Ids = ["76", "78", "79", "80", "86", "88", "85", "87"];
+
+                const getOrderedUserMatches = (ids: string[]) => {
+                  const userKnockout = getUserKnockoutMatches(selectedUser);
+                  return ids.map(id => userKnockout.find(m => m.id === id)).filter(Boolean) as KnockoutMatch[];
+                };
+
+                if (viewMode === "chaveamento") {
+                  const activeStage = getActiveStage();
+                  return (
+                    <div className="bracket-wrapper no-print">
+                      {/* Mobile Navigation Tabs */}
+                      <div className="mobile-bracket-nav no-print">
+                        <button 
+                          className={`bracket-nav-btn ${bracketTab === "R32" ? "active" : ""}`}
+                          onClick={() => setBracketTab("R32")}
+                        >
+                          R32 (16-avos)
+                        </button>
+                        <button 
+                          className={`bracket-nav-btn ${bracketTab === "R16" ? "active" : ""}`}
+                          onClick={() => setBracketTab("R16")}
+                        >
+                          R16 (Oitavas)
+                        </button>
+                        <button 
+                          className={`bracket-nav-btn ${bracketTab === "QF" ? "active" : ""}`}
+                          onClick={() => setBracketTab("QF")}
+                        >
+                          Quartas
+                        </button>
+                        <button 
+                          className={`bracket-nav-btn ${bracketTab === "SF" ? "active" : ""}`}
+                          onClick={() => setBracketTab("SF")}
+                        >
+                          Semifinais
+                        </button>
+                        <button 
+                          className={`bracket-nav-btn ${bracketTab === "FINAL" ? "active" : ""}`}
+                          onClick={() => setBracketTab("FINAL")}
+                        >
+                          Finais
+                        </button>
+                      </div>
+
+                      <div className="bracket-container">
+                        {/* 1. R32 Esquerda */}
+                        <div className={`bracket-column left-column r32 ${bracketTab === "R32" ? "active-mobile" : ""} ${activeStage === "R32" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">16-avos (L)</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(leftR32Ids).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+
+                        {/* 2. R16 Esquerda */}
+                        <div className={`bracket-column left-column r16 ${bracketTab === "R16" ? "active-mobile" : ""} ${activeStage === "R16" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">Oitavas (L)</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(leftR16Ids).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+
+                        {/* 3. QF Esquerda */}
+                        <div className={`bracket-column left-column qf ${bracketTab === "QF" ? "active-mobile" : ""} ${activeStage === "QF" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">Quartas (L)</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(leftQFIds).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+
+                        {/* 4. SF Esquerda */}
+                        <div className={`bracket-column left-column sf ${bracketTab === "SF" ? "active-mobile" : ""} ${activeStage === "SF" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">Semifinal (L)</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(leftSFIds).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+
+                        {/* 5. Centro (Final e 3º Lugar) */}
+                        <div className={`bracket-column center-column finals ${bracketTab === "FINAL" ? "active-mobile" : ""} ${activeStage === "FINAL" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">Decisão</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(centerFinalIds).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+
+                        {/* 6. SF Direita */}
+                        <div className={`bracket-column right-column sf ${bracketTab === "SF" ? "active-mobile" : ""} ${activeStage === "SF" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">Semifinal (R)</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(rightSFIds).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+
+                        {/* 7. QF Direita */}
+                        <div className={`bracket-column right-column qf ${bracketTab === "QF" ? "active-mobile" : ""} ${activeStage === "QF" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">Quartas (R)</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(rightQFIds).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+
+                        {/* 8. R16 Direita */}
+                        <div className={`bracket-column right-column r16 ${bracketTab === "R16" ? "active-mobile" : ""} ${activeStage === "R16" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">Oitavas (R)</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(rightR16Ids).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+
+                        {/* 9. R32 Direita */}
+                        <div className={`bracket-column right-column r32 ${bracketTab === "R32" ? "active-mobile" : ""} ${activeStage === "R32" ? "active-stage" : "inactive-stage"}`}>
+                          <h4 className="bracket-column-title">16-avos (R)</h4>
+                          <div className="bracket-match-list">
+                            {getOrderedUserMatches(rightR32Ids).map(m => renderKnockoutMatchCard(m, "palpite"))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Visualização em Grade (Fallback ou Modo de Impressão)
+                const userKnockout = getUserKnockoutMatches(selectedUser);
+                const filteredKnockout = userKnockout.filter(m => {
+                  if (knockoutStageFilter === "all") return true;
+                  if (knockoutStageFilter === "FINAL") return m.stage === "FINAL" || m.stage === "3RD";
+                  return m.stage === knockoutStageFilter;
+                });
+
+                if (filteredKnockout.length === 0) {
+                  return (
+                    <div className="empty-state">
+                      <AlertTriangle className="empty-state-icon" />
+                      <p>Nenhum jogo do mata-mata encontrado.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="matches-grid">
+                    {filteredKnockout.map((match) => renderKnockoutMatchCard(match, "palpite"))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ABA 3: FASE DE GRUPOS (HISTÓRICO) */}
+          {activeTab === "grupos" && (
+            <div>
+              {/* Sub-navegação da Fase de Grupos */}
+              <div className="subtabs-navigation no-print" style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "10px" }}>
+                <button 
+                  className={`filter-btn ${gruposSubTab === "ranking_grupos" ? "active" : ""}`}
+                  onClick={() => setGruposSubTab("ranking_grupos")}
+                >
+                  🏆 Classificação Histórica
+                </button>
+                <button 
+                  className={`filter-btn ${gruposSubTab === "palpites_grupos" ? "active" : ""}`}
+                  onClick={() => setGruposSubTab("palpites_grupos")}
+                >
+                  📝 Palpites Enviados
+                </button>
+                <button 
+                  className={`filter-btn ${gruposSubTab === "tabela_grupos" ? "active" : ""}`}
+                  onClick={() => setGruposSubTab("tabela_grupos")}
+                >
+                  📊 Classificação dos Grupos
+                </button>
+              </div>
+
+              {/* Sub-aba A: Classificação dos Grupos */}
+              {gruposSubTab === "ranking_grupos" && (
+                <div>
+                  <div className="pdf-actions no-print">
+                    <button className="pdf-btn" onClick={() => window.print()}>
+                      <FileText size={16} />
+                      Salvar PDF da Classificação de Grupos
+                    </button>
+                  </div>
+                  
+                  {/* Podium Visual (Fase de Grupos) */}
+                  <div className="podium-section">
+                    {/* 2º Lugar */}
+                    {rankingGroups[1] && (
+                      <div className="podium-card second">
+                        <div className="podium-avatar" style={{ padding: participantAvatars[rankingGroups[1].name] ? "0" : undefined }}>
+                          {participantAvatars[rankingGroups[1].name] ? (
+                            <img src={participantAvatars[rankingGroups[1].name]} alt={rankingGroups[1].name} className="avatar-img" />
+                          ) : (
+                            rankingGroups[1].name.substring(0, 2).toUpperCase()
+                          )}
+                          <span className="badge-place">2</span>
+                        </div>
+                        <h3 className="podium-name">{rankingGroups[1].name}</h3>
+                        <p className="podium-points">{rankingGroups[1].points} pts</p>
+                        <p className="podium-stats">{rankingGroups[1].exactScores} placares exatos</p>
+                      </div>
+                    )}
+
+                    {/* 1º Lugar */}
+                    {rankingGroups[0] && (
+                      <div className="podium-card first">
+                        <Crown className="crown-icon" />
+                        <div className="podium-avatar" style={{ padding: participantAvatars[rankingGroups[0].name] ? "0" : undefined }}>
+                          {participantAvatars[rankingGroups[0].name] ? (
+                            <img src={participantAvatars[rankingGroups[0].name]} alt={rankingGroups[0].name} className="avatar-img" />
+                          ) : (
+                            rankingGroups[0].name.substring(0, 2).toUpperCase()
+                          )}
+                          <span className="badge-place">1</span>
+                        </div>
+                        <h3 className="podium-name">{rankingGroups[0].name}</h3>
+                        <p className="podium-points">{rankingGroups[0].points} pts</p>
+                        <p className="podium-stats">{rankingGroups[0].exactScores} placares exatos</p>
+                      </div>
+                    )}
+
+                    {/* 3º Lugar */}
+                    {rankingGroups[2] && (
+                      <div className="podium-card third">
+                        <div className="podium-avatar" style={{ padding: participantAvatars[rankingGroups[2].name] ? "0" : undefined }}>
+                          {participantAvatars[rankingGroups[2].name] ? (
+                            <img src={participantAvatars[rankingGroups[2].name]} alt={rankingGroups[2].name} className="avatar-img" />
+                          ) : (
+                            rankingGroups[2].name.substring(0, 2).toUpperCase()
+                          )}
+                          <span className="badge-place">3</span>
+                        </div>
+                        <h3 className="podium-name">{rankingGroups[2].name}</h3>
+                        <p className="podium-points">{rankingGroups[2].points} pts</p>
+                        <p className="podium-stats">{rankingGroups[2].exactScores} placares exatos</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tabela de Classificação Geral de Grupos */}
+                  <div className="ranking-table-card">
+                    <table className="ranking-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: "80px" }}>Pos.</th>
+                          <th>Participante</th>
+                          <th style={{ textAlign: "center" }}>Pts Totais</th>
+                          <th style={{ textAlign: "center" }}>Placar Exato (3 pts)</th>
+                          <th style={{ textAlign: "center" }}>Acertou Venc. (1 pt)</th>
+                          <th style={{ textAlign: "center" }}>Erros</th>
+                          <th style={{ textAlign: "center" }}>Jogos Calculados</th>
+                          <th style={{ textAlign: "center", width: "100px" }}>Detalhes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rankingGroups.map((user, idx) => (
+                          <tr key={user.name} className="ranking-row">
+                            <td>
+                              <span className={`position-badge ${
+                                idx === 0 ? "first-pos" : idx === 1 ? "second-pos" : idx === 2 ? "third-pos" : ""
+                              }`}>
+                                {idx + 1}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="participant-name-col">
+                                <div className="participant-avatar-sm" style={{
+                                    background: idx === 0 ? "#f59e0b" : idx === 1 ? "#cbd5e1" : idx === 2 ? "#b45309" : "#1e293b",
+                                    padding: participantAvatars[user.name] ? "0" : undefined
+                                  }}>
+                                  {participantAvatars[user.name] ? (
+                                    <img src={participantAvatars[user.name]} alt={user.name} className="avatar-img" />
+                                  ) : (
+                                    user.name.substring(0,2).toUpperCase()
+                                  )}
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{user.name}</div>
+                                  {idx === 0 && <span style={{ fontSize: "0.7rem", color: "var(--secondary)", fontWeight: 700 }}>★ LÍDER ATUAL</span>}
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ textAlign: "center" }} className="points-val">
+                              {user.points}
+                            </td>
+                            <td style={{ textAlign: "center" }} className="stats-detail">
+                              {user.exactScores}
+                            </td>
+                            <td style={{ textAlign: "center" }} className="stats-detail">
+                              {user.outcomeOnly}
+                            </td>
+                            <td style={{ textAlign: "center", color: "rgba(239, 68, 68, 0.7)" }} className="stats-detail">
+                              {user.errors}
+                            </td>
+                            <td style={{ textAlign: "center" }} className="stats-detail">
+                              {user.playedCount} / {matchesList.filter((m) => !isMatchExcluded(matchDates[m.id])).length}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <button 
+                                className="detail-btn"
+                                onClick={() => {
+                                  setSelectedDetailUser(user.name);
+                                  setModalPhase("grupos");
+                                }}
+                                title={`Ver palpites de ${user.name}`}
+                              >
+                                <Eye size={14} />
+                                <span>Ver</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-aba B: Palpites (Fase de Grupos) */}
+              {gruposSubTab === "palpites_grupos" && (
+                <div>
+                  <div className="pdf-actions no-print" style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
+                    <button className="pdf-btn" onClick={() => window.print()}>
+                      <FileText size={16} />
+                      Salvar PDF dos Palpites de Grupos ({selectedUser})
+                    </button>
+                  </div>
+
+                  <div className="controls-bar">
+                    <div className="user-selector-container">
+                      {participantAvatars[selectedUser] ? (
+                        <img 
+                          src={participantAvatars[selectedUser]} 
+                          alt={selectedUser} 
+                          className="avatar-img" 
+                          style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover", border: "1px solid var(--card-border)" }}
+                        />
+                      ) : (
+                        <div className="participant-avatar-sm" style={{ width: "30px", height: "30px", fontSize: "0.85rem", background: "#1e293b" }}>
+                          {selectedUser.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="select-label">Visualizando palpites de:</span>
+                      <select
+                        className="custom-select"
+                        value={selectedUser}
+                        onChange={(e) => setSelectedUser(e.target.value)}
+                      >
+                        {participants.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="filters-container">
+                      <button
+                        className={`filter-btn ${roundFilter === "today" ? "active" : ""}`}
+                        onClick={() => setRoundFilter("today")}
+                      >
+                        🔥 Jogos de Hoje
+                      </button>
+                      <button
+                        className={`filter-btn ${roundFilter === "all" ? "active" : ""}`}
+                        onClick={() => setRoundFilter("all")}
+                      >
+                        Todas Rodadas
+                      </button>
+                      <button
+                        className={`filter-btn ${roundFilter === 1 ? "active" : ""}`}
+                        onClick={() => setRoundFilter(1)}
+                      >
+                        Rodada 1
+                      </button>
+                      <button
+                        className={`filter-btn ${roundFilter === 2 ? "active" : ""}`}
+                        onClick={() => setRoundFilter(2)}
+                      >
+                        Rodada 2
+                      </button>
+                      <button
+                        className={`filter-btn ${roundFilter === 3 ? "active" : ""}`}
+                        onClick={() => setRoundFilter(3)}
+                      >
+                        Rodada 3
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px" }}>
+                    <div className="filters-container">
+                      <span className="select-label" style={{ alignSelf: "center" }}>Filtrar Grupo:</span>
+                      <button
+                        className={`filter-btn ${groupFilter === "all" ? "active" : ""}`}
+                        onClick={() => setGroupFilter("all")}
+                      >
+                        Todos
+                      </button>
+                      {groupLetters.map((letter) => (
+                        <button
+                          key={letter}
+                          className={`filter-btn ${groupFilter === letter ? "active" : ""}`}
+                          onClick={() => setGroupFilter(letter)}
+                        >
+                          Gr. {letter}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Ordenação dos Jogos (Grupos) */}
+                  <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px", display: "flex", justifyContent: "flex-start" }}>
+                    <div className="user-selector-container" style={{ background: "transparent", border: "none", padding: 0 }}>
+                      <span className="select-label" style={{ fontWeight: 600 }}>Ordenar por:</span>
+                      <select
+                        className="custom-select"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as "group" | "date")}
+                        style={{ minWidth: "200px" }}
+                      >
+                        <option value="group">Grupo e Rodada</option>
+                        <option value="date">Data e Hora (Cronológico)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="matches-grid">
+                    {sortedFilteredMatches.map((match) => {
+                      const isExcluded = isMatchExcluded(matchDates[match.id]);
+                      const guess = tempGuesses[match.id] || { home: null, away: null };
+                      const realResult = gabarito[match.id];
+                      const pointsResult = calculateMatchPoints(guess, realResult);
+
+                      return (
+                        <div key={match.id} className="match-card locked-match" style={{ opacity: 0.9 }}>
+                          <div className="match-header">
+                            <span>{match.groupName} • Rodada {match.round}</span>
+                            {isExcluded ? (
+                              <span className="points-badge outcome" style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)" }}>
+                                Fora do bolão
+                              </span>
+                            ) : pointsResult.type !== "none" && (
+                              <span className={`points-badge ${pointsResult.type}`}>
+                                {pointsResult.points} {pointsResult.points === 1 ? "Ponto" : "Pontos"}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="match-body">
+                            <div className="team-container home">
+                              <span className="team-name" title={match.homeTeam.name}>
+                                {match.homeTeam.name}
+                              </span>
+                              <img src={getFlagUrl(match.homeTeam.code)} alt={match.homeTeam.name} className="flag-icon" />
+                            </div>
+    
+                            <div className="score-container">
+                              <input
+                                type="number"
+                                className="score-input"
+                                value={guess.home ?? ""}
+                                disabled
+                              />
+                              <span className="score-divider">x</span>
+                              <input
+                                type="number"
+                                className="score-input"
+                                value={guess.away ?? ""}
+                                disabled
+                              />
+                            </div>
+  
+                            <div className="team-container away">
+                              <img src={getFlagUrl(match.awayTeam.code)} alt={match.awayTeam.name} className="flag-icon" />
+                              <span className="team-name" title={match.awayTeam.name}>
+                                {match.awayTeam.name}
+                              </span>
+                            </div>
+                          </div>
+  
+                          {matchDates[match.id] && (
+                            <div className="match-date-info">
+                              📅 {formatMatchDate(matchDates[match.id])}
+                            </div>
+                          )}
+  
+                          {realResult && realResult.home !== null && realResult.away !== null && (
+                            <div className="gabarito-score-info">
+                              Resultado Real: <strong>{realResult.home} x {realResult.away}</strong>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-aba C: Tabela Oficial de Grupos */}
+              {gruposSubTab === "tabela_grupos" && (
                 <div className="groups-grid">
                   {groupLetters.map((letter) => {
                     const standings = getGroupStandings(letter, gabarito);
@@ -1140,337 +2685,11 @@ export default function App() {
                     );
                   })}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* ABA 2: MEUS PALPITES */}
-          {activeTab === "palpites" && (
-            <div>
-              {guessesLocked && (
-                <div className="locked-warning">
-                  <Lock size={18} />
-                  <span><strong>Palpites Encerrados:</strong> O prazo para preencher ou alterar os palpites acabou! Os placares estão travados apenas para visualização.</span>
-                </div>
-              )}
-
-              <div className="pdf-actions no-print" style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
-                <button className="pdf-btn" onClick={() => window.print()}>
-                  <FileText size={16} />
-                  Salvar PDF dos Palpites ({selectedUser})
-                </button>
-                
-                {tempGuesses["TODAY_LOCKED"]?.home === 1 || allGuesses[selectedUser]?.["TODAY_LOCKED"]?.home === 1 ? (
-                  <button className="pdf-btn" disabled style={{ background: "rgba(16, 185, 129, 0.08)", color: "var(--success)", border: "1px solid rgba(16, 185, 129, 0.2)", cursor: "not-allowed" }}>
-                    <Lock size={16} />
-                    Palpites de Hoje Enviados e Travados 🔒
-                  </button>
-                ) : (
-                  <button 
-                    className="save-btn" 
-                    onClick={submitAndLockTodayGuesses}
-                    disabled={saving}
-                    style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", borderColor: "#d97706", color: "#000", fontWeight: 700, boxShadow: "0 4px 10px rgba(245, 158, 11, 0.2)" }}
-                  >
-                    {saving ? (
-                      "Enviando..."
-                    ) : (
-                      <>
-                        <Lock size={16} />
-                        Enviar e Travar Palpites de Hoje 🔒
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-
-              {/* Barra de Filtros e Seletor de Nome */}
-              <div className="controls-bar">
-                <div className="user-selector-container">
-                  {participantAvatars[selectedUser] ? (
-                    <img 
-                      src={participantAvatars[selectedUser]} 
-                      alt={selectedUser} 
-                      className="avatar-img" 
-                      style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover", border: "1px solid var(--card-border)" }}
-                    />
-                  ) : (
-                    <div className="participant-avatar-sm" style={{ width: "30px", height: "30px", fontSize: "0.85rem", background: "#1e293b" }}>
-                      {selectedUser.substring(0, 2).toUpperCase()}
-                    </div>
-                  )}
-                  <span className="select-label">Quem é você?</span>
-                  <select
-                    className="custom-select"
-                    value={selectedUser}
-                    onChange={(e) => {
-                      if (hasChanges) {
-                        if (confirm("Você tem alterações não salvas de palpites. Deseja mudar de participante e perder as alterações?")) {
-                          setSelectedUser(e.target.value);
-                        }
-                      } else {
-                        setSelectedUser(e.target.value);
-                      }
-                    }}
-                  >
-                    {participants.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Filtros de Rodadas */}
-                <div className="filters-container">
-                  <button
-                    className={`filter-btn ${roundFilter === "today" ? "active" : ""}`}
-                    onClick={() => setRoundFilter("today")}
-                    style={{
-                      borderColor: roundFilter === "today" ? "var(--secondary)" : "rgba(255,255,255,0.05)",
-                      background: roundFilter === "today" ? "var(--secondary-glow)" : undefined,
-                      color: roundFilter === "today" ? "var(--secondary)" : undefined,
-                      fontWeight: 700
-                    }}
-                  >
-                    🔥 Jogos de Hoje
-                  </button>
-                  <button
-                    className={`filter-btn ${roundFilter === "all" ? "active" : ""}`}
-                    onClick={() => setRoundFilter("all")}
-                  >
-                    Todas Rodadas
-                  </button>
-                  <button
-                    className={`filter-btn ${roundFilter === 1 ? "active" : ""}`}
-                    onClick={() => setRoundFilter(1)}
-                  >
-                    Rodada 1
-                  </button>
-                  <button
-                    className={`filter-btn ${roundFilter === 2 ? "active" : ""}`}
-                    onClick={() => setRoundFilter(2)}
-                  >
-                    Rodada 2
-                  </button>
-                  <button
-                    className={`filter-btn ${roundFilter === 3 ? "active" : ""}`}
-                    onClick={() => setRoundFilter(3)}
-                  >
-                    Rodada 3
-                  </button>
-                </div>
-              </div>
-
-              {/* Filtro secundário por Grupos */}
-              <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px" }}>
-                <div className="filters-container">
-                  <span className="select-label" style={{ alignSelf: "center" }}>Filtrar Grupo:</span>
-                  <button
-                    className={`filter-btn ${groupFilter === "all" ? "active" : ""}`}
-                    onClick={() => setGroupFilter("all")}
-                  >
-                    Todos
-                  </button>
-                  {groupLetters.map((letter) => (
-                    <button
-                      key={letter}
-                      className={`filter-btn ${groupFilter === letter ? "active" : ""}`}
-                      onClick={() => setGroupFilter(letter)}
-                    >
-                      Gr. {letter}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Ordenação dos Jogos */}
-              <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px", display: "flex", justifyContent: "flex-start" }}>
-                <div className="user-selector-container" style={{ background: "transparent", border: "none", padding: 0 }}>
-                  <span className="select-label" style={{ fontWeight: 600 }}>Ordenar por:</span>
-                  <select
-                    className="custom-select"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as "group" | "date")}
-                    style={{ minWidth: "200px" }}
-                  >
-                    <option value="group">Grupo e Rodada</option>
-                    <option value="date">Data e Hora (Cronológico)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Tabela de Classificação do Grupo (se houver grupo selecionado) */}
-              {groupFilter !== "all" && (
-                <div className="group-standings-card">
-                  <h3 className="group-standings-title">
-                    📊 Classificação Simulada - Grupo {groupFilter} ({selectedUser})
-                  </h3>
-                  <div className="ranking-table-card" style={{ boxShadow: "none", border: "none" }}>
-                    <table className="group-standings-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: "50px" }}>Pos</th>
-                          <th>Seleção</th>
-                          <th style={{ textAlign: "center" }}>P</th>
-                          <th style={{ textAlign: "center" }}>J</th>
-                          <th style={{ textAlign: "center" }}>V</th>
-                          <th style={{ textAlign: "center" }}>E</th>
-                          <th style={{ textAlign: "center" }}>D</th>
-                          <th style={{ textAlign: "center" }}>GP</th>
-                          <th style={{ textAlign: "center" }}>GC</th>
-                          <th style={{ textAlign: "center" }}>SG</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {getGroupStandings(groupFilter, tempGuesses).map((team, idx) => (
-                          <tr key={team.code} className={`standings-row rank-${idx + 1}`}>
-                            <td>
-                              <span className={`standings-badge rank-${idx + 1}`}>
-                                {idx + 1}º
-                              </span>
-                            </td>
-                            <td className="standings-team-col">
-                              <img src={getFlagUrl(team.code)} alt={team.name} className="flag-icon" />
-                              <span>{team.name}</span>
-                            </td>
-                            <td style={{ textAlign: "center", fontWeight: "700" }}>{team.points}</td>
-                            <td style={{ textAlign: "center" }}>{team.played}</td>
-                            <td style={{ textAlign: "center" }}>{team.won}</td>
-                            <td style={{ textAlign: "center" }}>{team.drawn}</td>
-                            <td style={{ textAlign: "center" }}>{team.lost}</td>
-                            <td style={{ textAlign: "center" }}>{team.goalsFor}</td>
-                            <td style={{ textAlign: "center" }}>{team.goalsAgainst}</td>
-                            <td style={{ 
-                              textAlign: "center", 
-                              fontWeight: "700",
-                              color: team.goalDifference > 0 ? "var(--success)" : team.goalDifference < 0 ? "var(--error)" : "inherit" 
-                            }}>
-                              {team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Grid de Partidas */}
-              {filteredMatches.length === 0 ? (
-                <div className="empty-state">
-                  <AlertTriangle className="empty-state-icon" />
-                  <p>Nenhum jogo encontrado com os filtros selecionados.</p>
-                </div>
-              ) : (
-                <div className="matches-grid">
-                  {sortedFilteredMatches.map((match) => {
-                    const isExcluded = isMatchExcluded(matchDates[match.id]);
-                    const isToday = isMatchToday(match.id);
-                    const isTodayLocked = (tempGuesses["TODAY_LOCKED"]?.home === 1 || allGuesses[selectedUser]?.["TODAY_LOCKED"]?.home === 1) && isToday;
-                    const started = isMatchStarted(match.id);
-                    const isLocked = isTodayLocked || started;
-                    const guess = tempGuesses[match.id] || { home: null, away: null };
-                    const realResult = gabarito[match.id];
-                    const pointsResult = calculateMatchPoints(guess, realResult);
-
-                    return (
-                      <div key={match.id} className={`match-card ${isExcluded ? "excluded-match" : ""} ${isLocked ? "locked-match" : ""}`} style={{ opacity: isLocked ? 0.85 : 1 }}>
-                        <div className="match-header">
-                          <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            {match.groupName} • Rodada {match.round}
-                            {isLocked && <Lock size={12} style={{ color: started ? "var(--error)" : "var(--secondary)" }} />}
-                          </span>
-                          {isExcluded ? (
-                            <span className="points-badge outcome" style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                              Fora do bolão
-                            </span>
-                          ) : started ? (
-                            <span className="points-badge" style={{ background: "rgba(239, 68, 68, 0.12)", color: "var(--error)", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
-                              Jogo Iniciado
-                            </span>
-                          ) : pointsResult.type !== "none" && (
-                            <span className={`points-badge ${pointsResult.type}`}>
-                              {pointsResult.points} {pointsResult.points === 1 ? "Ponto" : "Pontos"}
-                            </span>
-                          )}
-                        </div>
-                        
-                        <div className="match-body">
-                          {/* Time de Casa */}
-                          <div className="team-container home">
-                            <span className="team-name" title={match.homeTeam.name}>
-                              {match.homeTeam.name}
-                            </span>
-                            <img
-                              src={getFlagUrl(match.homeTeam.code)}
-                              alt={match.homeTeam.name}
-                              className="flag-icon"
-                            />
-                          </div>
- 
-                          {/* Inputs do Placar */}
-                          <div className="score-container">
-                            <input
-                              type="number"
-                              className="score-input"
-                              min="0"
-                              placeholder="-"
-                              value={guess.home ?? ""}
-                              onChange={(e) =>
-                                handleScoreChange(match.id, "home", e.target.value, "palpite")
-                              }
-                              disabled={guessesLocked || isExcluded || isLocked}
-                            />
-                            <span className="score-divider">x</span>
-                            <input
-                              type="number"
-                              className="score-input"
-                              min="0"
-                              placeholder="-"
-                              value={guess.away ?? ""}
-                              onChange={(e) =>
-                                handleScoreChange(match.id, "away", e.target.value, "palpite")
-                              }
-                              disabled={guessesLocked || isExcluded || isLocked}
-                            />
-                          </div>
-
-                          {/* Time Visitante */}
-                          <div className="team-container away">
-                            <img
-                              src={getFlagUrl(match.awayTeam.code)}
-                              alt={match.awayTeam.name}
-                              className="flag-icon"
-                            />
-                            <span className="team-name" title={match.awayTeam.name}>
-                              {match.awayTeam.name}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Data e hora do jogo */}
-                        {matchDates[match.id] && (
-                          <div className="match-date-info">
-                            📅 {formatMatchDate(matchDates[match.id])}
-                          </div>
-                        )}
-
-                        {/* Informação sobre o gabarito oficial (Se o jogo já tiver acontecido) */}
-                        {realResult && realResult.home !== null && realResult.away !== null && (
-                          <div className="gabarito-score-info">
-                            Resultado Real: <strong>{realResult.home} x {realResult.away}</strong>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
               )}
             </div>
           )}
 
-          {/* ABA 3: GABARITO (ADMIN) */}
+          {/* ABA 4: GABARITO (ADMIN) */}
           {activeTab === "gabarito" && (
             <div>
               {showAdminLogin && !isAdminAuthenticated ? (
@@ -1524,7 +2743,7 @@ export default function App() {
                     <div className="admin-lock-banner">
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <Lock size={18} style={{ color: tempGuessesLocked ? "var(--error)" : "var(--primary)" }} />
-                        <span><strong>Bloquear Palpites dos Participantes:</strong> {tempGuessesLocked ? "Bloqueado 🔒" : "Liberado 🔓"}</span>
+                        <span><strong>Bloquear Palpites dos Participantes (Grupos):</strong> {tempGuessesLocked ? "Bloqueado 🔒" : "Liberado 🔓"}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                         <label className="switch">
@@ -1549,224 +2768,479 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="controls-bar">
-                    <div className="user-selector-container">
-                      <span className="select-label" style={{ color: isAdminAuthenticated ? "var(--secondary)" : "var(--text-muted)" }}>
-                        {isAdminAuthenticated ? "Modo Admin Liberado" : "Gabarito Oficial"}
-                      </span>
-                    </div>
-
-                    <div className="filters-container">
-                      <button
-                        className={`filter-btn ${roundFilter === "today" ? "active" : ""}`}
-                        onClick={() => setRoundFilter("today")}
-                        style={{
-                          borderColor: roundFilter === "today" ? "var(--secondary)" : "rgba(255,255,255,0.05)",
-                          background: roundFilter === "today" ? "var(--secondary-glow)" : undefined,
-                          color: roundFilter === "today" ? "var(--secondary)" : undefined,
-                          fontWeight: 700
-                        }}
-                      >
-                        🔥 Jogos de Hoje
-                      </button>
-                      <button
-                        className={`filter-btn ${roundFilter === "all" ? "active" : ""}`}
-                        onClick={() => setRoundFilter("all")}
-                      >
-                        Todas Rodadas
-                      </button>
-                      <button
-                        className={`filter-btn ${roundFilter === 1 ? "active" : ""}`}
-                        onClick={() => setRoundFilter(1)}
-                      >
-                        Rodada 1
-                      </button>
-                      <button
-                        className={`filter-btn ${roundFilter === 2 ? "active" : ""}`}
-                        onClick={() => setRoundFilter(2)}
-                      >
-                        Rodada 2
-                      </button>
-                      <button
-                        className={`filter-btn ${roundFilter === 3 ? "active" : ""}`}
-                        onClick={() => setRoundFilter(3)}
-                      >
-                        Rodada 3
-                      </button>
-                    </div>
+                  {/* Sub-navegação do Gabarito */}
+                  <div className="subtabs-navigation no-print" style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "10px", marginTop: "20px" }}>
+                    <button 
+                      className={`filter-btn ${adminSubTab === "gabarito_final" ? "active" : ""}`}
+                      onClick={() => setAdminSubTab("gabarito_final")}
+                    >
+                      🏆 Mata-Mata & Pódio
+                    </button>
+                    <button 
+                      className={`filter-btn ${adminSubTab === "gabarito_grupos" ? "active" : ""}`}
+                      onClick={() => setAdminSubTab("gabarito_grupos")}
+                    >
+                      ⚽ Fase de Grupos
+                    </button>
                   </div>
 
-                  <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px" }}>
-                    <div className="filters-container">
-                      <span className="select-label" style={{ alignSelf: "center" }}>Filtrar Grupo:</span>
-                      <button
-                        className={`filter-btn ${groupFilter === "all" ? "active" : ""}`}
-                        onClick={() => setGroupFilter("all")}
-                      >
-                        Todos
-                      </button>
-                      {groupLetters.map((letter) => (
-                        <button
-                          key={letter}
-                          className={`filter-btn ${groupFilter === letter ? "active" : ""}`}
-                          onClick={() => setGroupFilter(letter)}
-                        >
-                          Gr. {letter}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {/* A. Gabarito Mata-Mata & Pódio */}
+                  {adminSubTab === "gabarito_final" && (
+                    <div>
+                      {/* CARD PÓDIO DA COPA (GABARITO ADMIN) */}
+                      {(() => {
+                        const officialChamp = tempGabarito["cup_champion"] || gabarito["cup_champion"] || "";
+                        const officialSecond = tempGabarito["cup_second"] || gabarito["cup_second"] || "";
+                        const officialThird = tempGabarito["cup_third"] || gabarito["cup_third"] || "";
 
-                  {/* Ordenação dos Jogos (Admin) */}
-                  <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px", display: "flex", justifyContent: "flex-start" }}>
-                    <div className="user-selector-container" style={{ background: "transparent", border: "none", padding: 0 }}>
-                      <span className="select-label" style={{ fontWeight: 600 }}>Ordenar por:</span>
-                      <select
-                        className="custom-select"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as "group" | "date")}
-                        style={{ minWidth: "200px" }}
-                      >
-                        <option value="group">Grupo e Rodada</option>
-                        <option value="date">Data e Hora (Cronológico)</option>
-                      </select>
-                    </div>
-                  </div>
+                        const champTeam = allTeamsList.find(t => t.name === officialChamp);
+                        const secondTeam = allTeamsList.find(t => t.name === officialSecond);
+                        const thirdTeam = allTeamsList.find(t => t.name === officialThird);
+                        
+                        return (
+                          <div className="podium-card" style={{ borderColor: isAdminAuthenticated ? "var(--secondary)" : "rgba(255,255,255,0.08)" }}>
+                            <div className="podium-card-header">
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <Trophy size={22} style={{ color: "#f59e0b" }} />
+                                <h3>Definir Pódio Oficial da Copa 🏆</h3>
+                              </div>
+                              {!isAdminAuthenticated && <span className="locked-badge"><Lock size={12} /> Somente Admin</span>}
+                            </div>
+                            
+                            <div className="podium-card-body">
+                              <div className="podium-container">
+                                {/* 2º LUGAR - PRATA */}
+                                <div className="podium-block silver-block">
+                                  <div className="podium-flag-wrapper">
+                                    {secondTeam?.code ? (
+                                      <img src={getFlagUrl(secondTeam.code)} alt={officialSecond} className="podium-flag" />
+                                    ) : (
+                                      <div className="podium-flag-placeholder">?</div>
+                                    )}
+                                  </div>
+                                  <select
+                                    className="podium-select"
+                                    value={officialSecond}
+                                    onChange={(e) => handlePodiumChange("second", e.target.value, "gabarito")}
+                                    disabled={!isAdminAuthenticated}
+                                  >
+                                    <option value="">2º Lugar (Vice)...</option>
+                                    {allTeamsList.map((t) => (
+                                      <option key={t.name} value={t.name}>
+                                        {t.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div className="podium-step step-silver">
+                                    <span className="step-rank">2º</span>
+                                    <span className="step-label">🥈 Vice Oficial</span>
+                                  </div>
+                                </div>
 
-                  {/* Tabela de Classificação do Grupo (se houver grupo selecionado) */}
-                  {groupFilter !== "all" && (
-                    <div className="group-standings-card" style={{ borderLeft: `4px solid ${isAdminAuthenticated ? "var(--accent)" : "var(--primary)"}` }}>
-                      <h3 className="group-standings-title" style={{ color: isAdminAuthenticated ? "var(--accent)" : "var(--primary)" }}>
-                        📊 Classificação Oficial - Grupo {groupFilter}
-                      </h3>
-                      <div className="ranking-table-card" style={{ boxShadow: "none", border: "none" }}>
-                        <table className="group-standings-table">
-                          <thead>
-                            <tr>
-                              <th style={{ width: "50px" }}>Pos</th>
-                              <th>Seleção</th>
-                              <th style={{ textAlign: "center" }}>P</th>
-                              <th style={{ textAlign: "center" }}>J</th>
-                              <th style={{ textAlign: "center" }}>V</th>
-                              <th style={{ textAlign: "center" }}>E</th>
-                              <th style={{ textAlign: "center" }}>D</th>
-                              <th style={{ textAlign: "center" }}>GP</th>
-                              <th style={{ textAlign: "center" }}>GC</th>
-                              <th style={{ textAlign: "center" }}>SG</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {getGroupStandings(groupFilter, tempGabarito).map((team, idx) => (
-                              <tr key={team.code} className={`standings-row rank-${idx + 1}`}>
-                                <td>
-                                  <span className={`standings-badge rank-${idx + 1}`}>
-                                    {idx + 1}º
-                                  </span>
-                                </td>
-                                <td className="standings-team-col">
-                                  <img src={getFlagUrl(team.code)} alt={team.name} className="flag-icon" />
-                                  <span>{team.name}</span>
-                                </td>
-                                <td style={{ textAlign: "center", fontWeight: "700" }}>{team.points}</td>
-                                <td style={{ textAlign: "center" }}>{team.played}</td>
-                                <td style={{ textAlign: "center" }}>{team.won}</td>
-                                <td style={{ textAlign: "center" }}>{team.drawn}</td>
-                                <td style={{ textAlign: "center" }}>{team.lost}</td>
-                                <td style={{ textAlign: "center" }}>{team.goalsFor}</td>
-                                <td style={{ textAlign: "center" }}>{team.goalsAgainst}</td>
-                                <td style={{ 
-                                  textAlign: "center", 
-                                  fontWeight: "700",
-                                  color: team.goalDifference > 0 ? "var(--success)" : team.goalDifference < 0 ? "var(--error)" : "inherit" 
-                                }}>
-                                  {team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                                {/* 1º LUGAR - OURO */}
+                                <div className="podium-block gold-block">
+                                  <div className="podium-flag-wrapper">
+                                    {champTeam?.code ? (
+                                      <img src={getFlagUrl(champTeam.code)} alt={officialChamp} className="podium-flag" />
+                                    ) : (
+                                      <div className="podium-flag-placeholder">?</div>
+                                    )}
+                                  </div>
+                                  <select
+                                    className="podium-select"
+                                    value={officialChamp}
+                                    onChange={(e) => handlePodiumChange("first", e.target.value, "gabarito")}
+                                    disabled={!isAdminAuthenticated}
+                                  >
+                                    <option value="">1º Lugar (Campeão)...</option>
+                                    {allTeamsList.map((t) => (
+                                      <option key={t.name} value={t.name}>
+                                        {t.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div className="podium-step step-gold">
+                                    <span className="step-rank">1º</span>
+                                    <span className="step-label">👑 Campeão Oficial</span>
+                                  </div>
+                                </div>
+
+                                {/* 3º LUGAR - BRONZE */}
+                                <div className="podium-block bronze-block">
+                                  <div className="podium-flag-wrapper">
+                                    {thirdTeam?.code ? (
+                                      <img src={getFlagUrl(thirdTeam.code)} alt={officialThird} className="podium-flag" />
+                                    ) : (
+                                      <div className="podium-flag-placeholder">?</div>
+                                    )}
+                                  </div>
+                                  <select
+                                    className="podium-select"
+                                    value={officialThird}
+                                    onChange={(e) => handlePodiumChange("third", e.target.value, "gabarito")}
+                                    disabled={!isAdminAuthenticated}
+                                  >
+                                    <option value="">3º Lugar...</option>
+                                    {allTeamsList.map((t) => (
+                                      <option key={t.name} value={t.name}>
+                                        {t.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div className="podium-step step-bronze">
+                                    <span className="step-rank">3º</span>
+                                    <span className="step-label">🥉 3º Lugar Oficial</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      <div className="controls-bar" style={{ marginTop: "20px" }}>
+                        <div style={{ display: "flex", gap: "6px", marginLeft: "auto" }}>
+                          <button 
+                            className={`filter-btn ${viewMode === "chaveamento" ? "active" : ""}`}
+                            onClick={() => setViewMode("chaveamento")}
+                          >
+                            🌳 Visualização em Chaveamento
+                          </button>
+                          <button 
+                            className={`filter-btn ${viewMode === "grade" ? "active" : ""}`}
+                            onClick={() => setViewMode("grade")}
+                          >
+                            🎛️ Visualização em Grade
+                          </button>
+                        </div>
                       </div>
+
+                      {/* Barra de Filtros (SÓ MOSTRA SE FOR GRADE) */}
+                      {viewMode === "grade" && (
+                        <div className="controls-bar" style={{ marginTop: "10px" }}>
+                          <div className="filters-container">
+                            <span className="select-label" style={{ alignSelf: "center" }}>Filtrar Rodada:</span>
+                            <button
+                              className={`filter-btn ${knockoutStageFilter === "all" ? "active" : ""}`}
+                              onClick={() => setKnockoutStageFilter("all")}
+                            >
+                              Todos
+                            </button>
+                            <button
+                              className={`filter-btn ${knockoutStageFilter === "R32" ? "active" : ""}`}
+                              onClick={() => setKnockoutStageFilter("R32")}
+                            >
+                              16 avos (R32)
+                            </button>
+                            <button
+                              className={`filter-btn ${knockoutStageFilter === "R16" ? "active" : ""}`}
+                              onClick={() => setKnockoutStageFilter("R16")}
+                            >
+                              Oitavas (R16)
+                            </button>
+                            <button
+                              className={`filter-btn ${knockoutStageFilter === "QF" ? "active" : ""}`}
+                              onClick={() => setKnockoutStageFilter("QF")}
+                            >
+                              Quartas (QF)
+                            </button>
+                            <button
+                              className={`filter-btn ${knockoutStageFilter === "SF" ? "active" : ""}`}
+                              onClick={() => setKnockoutStageFilter("SF")}
+                            >
+                              Semifinal (SF)
+                            </button>
+                            <button
+                              className={`filter-btn ${knockoutStageFilter === "FINAL" ? "active" : ""}`}
+                              onClick={() => setKnockoutStageFilter("FINAL")}
+                            >
+                              Finais
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Grid ou Chaveamento de Partidas de Mata-Mata */}
+                      {(() => {
+                        const leftR32Ids = ["73", "75", "74", "77", "83", "84", "81", "82"];
+                        const leftR16Ids = ["90", "89", "93", "94"];
+                        const leftQFIds = ["97", "98"];
+                        const leftSFIds = ["101"];
+                        
+                        const centerFinalIds = ["104", "103"];
+                        
+                        const rightSFIds = ["102"];
+                        const rightQFIds = ["99", "100"];
+                        const rightR16Ids = ["91", "92", "95", "96"];
+                        const rightR32Ids = ["76", "78", "79", "80", "86", "88", "85", "87"];
+
+                        const getOrderedOfficialMatches = (ids: string[]) => {
+                          const officialKnockout = getOfficialKnockoutMatches();
+                          return ids.map(id => officialKnockout.find(m => m.id === id)).filter(Boolean) as KnockoutMatch[];
+                        };
+
+                        if (viewMode === "chaveamento") {
+                          const activeStage = getActiveStage();
+                          return (
+                            <div className="bracket-wrapper no-print">
+                              {/* Mobile Navigation Tabs */}
+                              <div className="mobile-bracket-nav no-print">
+                                <button 
+                                  className={`bracket-nav-btn ${bracketTab === "R32" ? "active" : ""}`}
+                                  onClick={() => setBracketTab("R32")}
+                                >
+                                  R32 (16-avos)
+                                </button>
+                                <button 
+                                  className={`bracket-nav-btn ${bracketTab === "R16" ? "active" : ""}`}
+                                  onClick={() => setBracketTab("R16")}
+                                >
+                                  R16 (Oitavas)
+                                </button>
+                                <button 
+                                  className={`bracket-nav-btn ${bracketTab === "QF" ? "active" : ""}`}
+                                  onClick={() => setBracketTab("QF")}
+                                >
+                                  Quartas
+                                </button>
+                                <button 
+                                  className={`bracket-nav-btn ${bracketTab === "SF" ? "active" : ""}`}
+                                  onClick={() => setBracketTab("SF")}
+                                >
+                                  Semifinais
+                                </button>
+                                <button 
+                                  className={`bracket-nav-btn ${bracketTab === "FINAL" ? "active" : ""}`}
+                                  onClick={() => setBracketTab("FINAL")}
+                                >
+                                  Finais
+                                </button>
+                              </div>
+
+                              <div className="bracket-container">
+                                {/* 1. R32 Esquerda */}
+                                <div className={`bracket-column left-column r32 ${bracketTab === "R32" ? "active-mobile" : ""} ${activeStage === "R32" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">16-avos (L)</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(leftR32Ids).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+
+                                {/* 2. R16 Esquerda */}
+                                <div className={`bracket-column left-column r16 ${bracketTab === "R16" ? "active-mobile" : ""} ${activeStage === "R16" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">Oitavas (L)</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(leftR16Ids).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+
+                                {/* 3. QF Esquerda */}
+                                <div className={`bracket-column left-column qf ${bracketTab === "QF" ? "active-mobile" : ""} ${activeStage === "QF" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">Quartas (L)</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(leftQFIds).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+
+                                {/* 4. SF Esquerda */}
+                                <div className={`bracket-column left-column sf ${bracketTab === "SF" ? "active-mobile" : ""} ${activeStage === "SF" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">Semifinal (L)</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(leftSFIds).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+
+                                {/* 5. Centro (Final e 3º Lugar) */}
+                                <div className={`bracket-column center-column finals ${bracketTab === "FINAL" ? "active-mobile" : ""} ${activeStage === "FINAL" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">Decisão</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(centerFinalIds).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+
+                                {/* 6. SF Direita */}
+                                <div className={`bracket-column right-column sf ${bracketTab === "SF" ? "active-mobile" : ""} ${activeStage === "SF" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">Semifinal (R)</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(rightSFIds).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+
+                                {/* 7. QF Direita */}
+                                <div className={`bracket-column right-column qf ${bracketTab === "QF" ? "active-mobile" : ""} ${activeStage === "QF" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">Quartas (R)</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(rightQFIds).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+
+                                {/* 8. R16 Direita */}
+                                <div className={`bracket-column right-column r16 ${bracketTab === "R16" ? "active-mobile" : ""} ${activeStage === "R16" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">Oitavas (R)</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(rightR16Ids).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+
+                                {/* 9. R32 Direita */}
+                                <div className={`bracket-column right-column r32 ${bracketTab === "R32" ? "active-mobile" : ""} ${activeStage === "R32" ? "active-stage" : "inactive-stage"}`}>
+                                  <h4 className="bracket-column-title">16-avos (R)</h4>
+                                  <div className="bracket-match-list">
+                                    {getOrderedOfficialMatches(rightR32Ids).map(m => renderKnockoutMatchCard(m, "gabarito"))}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // Modo Grade
+                        const officialKnockout = getOfficialKnockoutMatches();
+                        const filteredKnockout = officialKnockout.filter(m => {
+                          if (knockoutStageFilter === "all") return true;
+                          if (knockoutStageFilter === "FINAL") return m.stage === "FINAL" || m.stage === "3RD";
+                          return m.stage === knockoutStageFilter;
+                        });
+
+                        return (
+                          <div className="matches-grid">
+                            {filteredKnockout.map((match) => renderKnockoutMatchCard(match, "gabarito"))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
-                  <div className="matches-grid">
-                    {sortedFilteredMatches.map((match) => {
-                      const result = tempGabarito[match.id] || { home: null, away: null };
-                      const isExcluded = isMatchExcluded(matchDates[match.id]);
-
-                      return (
-                        <div key={match.id} className={`match-card ${isExcluded ? "excluded-match" : ""}`} style={{ borderLeft: `4px solid ${isExcluded ? "rgba(255,255,255,0.15)" : isAdminAuthenticated ? "var(--accent)" : "var(--primary)"}` }}>
-                          <div className="match-header">
-                            <span>{match.groupName} • Rodada {match.round}</span>
-                            {isExcluded ? (
-                              <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Fora do Bolão</span>
-                            ) : (
-                              <span style={{ color: isAdminAuthenticated ? "var(--accent)" : "var(--primary)", fontWeight: 700 }}>Gabarito Oficial</span>
-                            )}
-                          </div>
-                          
-                          <div className="match-body">
-                            <div className="team-container home">
-                              <span className="team-name" title={match.homeTeam.name}>
-                                {match.homeTeam.name}
-                              </span>
-                              <img
-                                src={getFlagUrl(match.homeTeam.code)}
-                                alt={match.homeTeam.name}
-                                className="flag-icon"
-                              />
-                            </div>
-
-                            <div className="score-container">
-                              <input
-                                type="number"
-                                className="score-input"
-                                style={{ borderColor: isAdminAuthenticated ? "rgba(59, 130, 246, 0.4)" : "rgba(255,255,255,0.05)" }}
-                                min="0"
-                                placeholder="-"
-                                value={result.home ?? ""}
-                                onChange={(e) =>
-                                  handleScoreChange(match.id, "home", e.target.value, "gabarito")
-                                }
-                                disabled={!isAdminAuthenticated}
-                              />
-                              <span className="score-divider">x</span>
-                              <input
-                                type="number"
-                                className="score-input"
-                                style={{ borderColor: isAdminAuthenticated ? "rgba(59, 130, 246, 0.4)" : "rgba(255,255,255,0.05)" }}
-                                min="0"
-                                placeholder="-"
-                                value={result.away ?? ""}
-                                onChange={(e) =>
-                                  handleScoreChange(match.id, "away", e.target.value, "gabarito")
-                                }
-                                disabled={!isAdminAuthenticated}
-                              />
-                            </div>
-
-                            <div className="team-container away">
-                              <img
-                                src={getFlagUrl(match.awayTeam.code)}
-                                alt={match.awayTeam.name}
-                                className="flag-icon"
-                              />
-                              <span className="team-name" title={match.awayTeam.name}>
-                                {match.awayTeam.name}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Data e hora do jogo */}
-                          {matchDates[match.id] && (
-                            <div className="match-date-info">
-                              📅 {formatMatchDate(matchDates[match.id])}
-                            </div>
-                          )}
+                  {/* B. Gabarito Fase de Grupos */}
+                  {adminSubTab === "gabarito_grupos" && (
+                    <div>
+                      <div className="controls-bar">
+                        <div className="filters-container">
+                          <button
+                            className={`filter-btn ${roundFilter === "today" ? "active" : ""}`}
+                            onClick={() => setRoundFilter("today")}
+                          >
+                            🔥 Jogos de Hoje
+                          </button>
+                          <button
+                            className={`filter-btn ${roundFilter === "all" ? "active" : ""}`}
+                            onClick={() => setRoundFilter("all")}
+                          >
+                            Todas Rodadas
+                          </button>
+                          <button
+                            className={`filter-btn ${roundFilter === 1 ? "active" : ""}`}
+                            onClick={() => setRoundFilter(1)}
+                          >
+                            Rodada 1
+                          </button>
+                          <button
+                            className={`filter-btn ${roundFilter === 2 ? "active" : ""}`}
+                            onClick={() => setRoundFilter(2)}
+                          >
+                            Rodada 2
+                          </button>
+                          <button
+                            className={`filter-btn ${roundFilter === 3 ? "active" : ""}`}
+                            onClick={() => setRoundFilter(3)}
+                          >
+                            Rodada 3
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+
+                      <div className="controls-bar" style={{ marginTop: "-12px", borderTop: "1px solid rgba(255,255,255,0.02)", paddingTop: "12px" }}>
+                        <div className="filters-container">
+                          <span className="select-label" style={{ alignSelf: "center" }}>Filtrar Grupo:</span>
+                          <button
+                            className={`filter-btn ${groupFilter === "all" ? "active" : ""}`}
+                            onClick={() => setGroupFilter("all")}
+                          >
+                            Todos
+                          </button>
+                          {groupLetters.map((letter) => (
+                            <button
+                              key={letter}
+                              className={`filter-btn ${groupFilter === letter ? "active" : ""}`}
+                              onClick={() => setGroupFilter(letter)}
+                            >
+                              Gr. {letter}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="matches-grid">
+                        {sortedFilteredMatches.map((match) => {
+                          const result = tempGabarito[match.id] || { home: null, away: null };
+                          const isExcluded = isMatchExcluded(matchDates[match.id]);
+
+                          return (
+                            <div key={match.id} className={`match-card ${isExcluded ? "excluded-match" : ""}`} style={{ borderLeft: `4px solid ${isExcluded ? "rgba(255,255,255,0.15)" : isAdminAuthenticated ? "var(--secondary)" : "var(--primary)"}` }}>
+                              <div className="match-header">
+                                <span>{match.groupName} • Rodada {match.round}</span>
+                                {isExcluded ? (
+                                  <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Fora do Bolão</span>
+                                ) : (
+                                  <span style={{ color: isAdminAuthenticated ? "var(--secondary)" : "var(--primary)", fontWeight: 700 }}>Gabarito Oficial</span>
+                                )}
+                              </div>
+                              
+                              <div className="match-body">
+                                <div className="team-container home">
+                                  <span className="team-name" title={match.homeTeam.name}>
+                                    {match.homeTeam.name}
+                                  </span>
+                                  <img src={getFlagUrl(match.homeTeam.code)} alt={match.homeTeam.name} className="flag-icon" />
+                                </div>
+
+                                <div className="score-container">
+                                  <input
+                                    type="number"
+                                    className="score-input"
+                                    style={{ borderColor: isAdminAuthenticated ? "rgba(245, 158, 11, 0.4)" : "rgba(255,255,255,0.05)" }}
+                                    min="0"
+                                    placeholder="-"
+                                    value={result.home ?? ""}
+                                    onChange={(e) =>
+                                      handleScoreChange(match.id, "home", e.target.value, "gabarito")
+                                    }
+                                    disabled={!isAdminAuthenticated}
+                                  />
+                                  <span className="score-divider">x</span>
+                                  <input
+                                    type="number"
+                                    className="score-input"
+                                    style={{ borderColor: isAdminAuthenticated ? "rgba(245, 158, 11, 0.4)" : "rgba(255,255,255,0.05)" }}
+                                    min="0"
+                                    placeholder="-"
+                                    value={result.away ?? ""}
+                                    onChange={(e) =>
+                                      handleScoreChange(match.id, "away", e.target.value, "gabarito")
+                                    }
+                                    disabled={!isAdminAuthenticated}
+                                  />
+                                </div>
+
+                                <div className="team-container away">
+                                  <img src={getFlagUrl(match.awayTeam.code)} alt={match.awayTeam.name} className="flag-icon" />
+                                  <span className="team-name" title={match.awayTeam.name}>
+                                    {match.awayTeam.name}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {matchDates[match.id] && (
+                                <div className="match-date-info">
+                                  📅 {formatMatchDate(matchDates[match.id])}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1788,7 +3262,7 @@ export default function App() {
                   Descartar
                 </button>
                 <button
-                  onClick={activeTab === "palpites" ? saveUserGuesses : saveGabarito}
+                  onClick={(activeTab === "palpites_final" || activeTab === "grupos") ? saveUserGuesses : saveGabarito}
                   className="save-btn"
                   disabled={saving}
                 >
@@ -1818,8 +3292,18 @@ export default function App() {
             let errors = 0;
             let playedCount = 0;
 
-            const modalMatches = matchesList.map((match) => {
-              if (isMatchExcluded(matchDates[match.id])) return null;
+            const isFinalPhase = modalPhase === "final";
+            const targetMatches = isFinalPhase ? knockoutMatches : matchesList;
+
+            // Se for fase final, adiciona +5 pontos se acertar o campeão
+            const userChamp = userGuesses["cup_champion"];
+            const officialChamp = gabarito["cup_champion"];
+            if (isFinalPhase && userChamp && officialChamp && userChamp === officialChamp) {
+              points += 5;
+            }
+
+            const modalMatches = targetMatches.map((match) => {
+              if (!isFinalPhase && isMatchExcluded(matchDates[match.id])) return null;
 
               const guess = userGuesses[match.id];
               const real = gabarito[match.id];
@@ -1840,7 +3324,7 @@ export default function App() {
                 result,
               };
             }).filter(Boolean) as Array<{
-              match: Match;
+              match: Match | KnockoutMatch;
               guess: Score | undefined;
               real: Score | undefined;
               result: { points: number; type: "exact" | "outcome" | "zero" | "none" };
@@ -1870,7 +3354,7 @@ export default function App() {
                       )}
                       <div>
                         <h2>Palpites de {selectedDetailUser}</h2>
-                        <p>Histórico detalhado de pontuação</p>
+                        <p>{isFinalPhase ? "Fase Final (Mata-Mata)" : "Fase de Grupos (Histórico)"}</p>
                       </div>
                     </div>
                     <button className="modal-close-btn" onClick={closeDetailModal} title="Fechar">
@@ -1879,6 +3363,47 @@ export default function App() {
                   </div>
 
                   <div className="modal-body">
+                    {/* Exibe palpite de campeão no topo se for Fase Final */}
+                    {isFinalPhase && userChamp && (
+                      <div className="modal-champion-summary" style={{
+                        background: "rgba(245, 158, 11, 0.05)",
+                        border: "1px solid rgba(245, 158, 11, 0.15)",
+                        borderRadius: "12px",
+                        padding: "16px",
+                        marginBottom: "20px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <Trophy size={24} style={{ color: "#f59e0b" }} />
+                          <div>
+                            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Palpite de Campeão da Copa</div>
+                            <div style={{ fontWeight: 700, fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "6px" }}>
+                              {(() => {
+                                const team = allTeamsList.find(t => t.name === userChamp);
+                                return team?.code ? (
+                                  <img src={getFlagUrl(team.code)} alt={userChamp} className="flag-icon" style={{ width: "20px", height: "14px", borderRadius: "2px" }} />
+                                ) : null;
+                              })()}
+                              {userChamp}
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          {officialChamp ? (
+                            officialChamp === userChamp ? (
+                              <span className="points-badge exact" style={{ fontSize: "0.9rem", padding: "6px 12px" }}>Acertou! (+5 pts)</span>
+                            ) : (
+                              <span className="points-badge zero" style={{ fontSize: "0.9rem", padding: "6px 12px" }}>Errou (Campeão: {officialChamp})</span>
+                            )
+                          ) : (
+                            <span className="points-badge outcome" style={{ fontSize: "0.9rem", padding: "6px 12px", background: "rgba(255,255,255,0.05)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.1)" }}>Pendente</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Grid de Estatísticas */}
                     <div className="modal-stats-grid">
                       <div className="modal-stat-card total-pts">
@@ -1962,17 +3487,20 @@ export default function App() {
                             badgeClass = "zero";
                           }
 
+                          const homeCode = match.homeTeam.code;
+                          const awayCode = match.awayTeam.code;
+
                           return (
                             <div key={match.id} className={`modal-match-item border-${badgeClass}`}>
                               <div className="modal-match-header">
-                                <span>{match.groupName} • Rodada {match.round}</span>
+                                <span>{match.groupName}</span>
                                 <span className={`modal-points-badge ${badgeClass}`}>{badgeText}</span>
                               </div>
                               <div className="modal-match-body">
                                 {/* Time Casa */}
                                 <div className="modal-team home">
                                   <span className="modal-team-name">{match.homeTeam.name}</span>
-                                  <img src={getFlagUrl(match.homeTeam.code)} alt={match.homeTeam.name} className="flag-icon" />
+                                  {homeCode && <img src={getFlagUrl(homeCode)} alt={match.homeTeam.name} className="flag-icon" />}
                                 </div>
 
                                 {/* Placar Comparativo */}
@@ -1993,7 +3521,7 @@ export default function App() {
 
                                 {/* Time Visitante */}
                                 <div className="modal-team away">
-                                  <img src={getFlagUrl(match.awayTeam.code)} alt={match.awayTeam.name} className="flag-icon" />
+                                  {awayCode && <img src={getFlagUrl(awayCode)} alt={match.awayTeam.name} className="flag-icon" />}
                                   <span className="modal-team-name">{match.awayTeam.name}</span>
                                 </div>
                               </div>

@@ -281,7 +281,10 @@ export const parseMatchDate = (dateStr: string): Date => {
   const [datePart, timePart] = dateStr.split(" ");
   const [month, day, year] = datePart.split("/");
   const [hour, minute] = timePart.split(":");
-  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  // Como as datas estão no fuso de São Paulo (UTC-3), criamos a data em UTC
+  // somando 3 horas ao valor para obter o timestamp absoluto correspondente.
+  const utcTime = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) + 3, Number(minute));
+  return new Date(utcTime);
 };
 
 // Verifica se a partida aconteceu antes do início do bolão
@@ -294,4 +297,275 @@ export const isMatchExcluded = (matchDateStr: string | undefined): boolean => {
     return false;
   }
 };
+
+export interface KnockoutMatchConfig {
+  id: string;
+  groupName: string;
+  stage: string;
+  homeLabel: string;
+  awayLabel: string;
+  dateStr: string;
+}
+
+export const knockoutMatchesConfig: KnockoutMatchConfig[] = [
+  {
+    id: "73",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "South Africa",
+    awayLabel: "Canada",
+    dateStr: "06/28/2026 16:00"
+  },
+  {
+    id: "74",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Germany",
+    awayLabel: "Paraguay",
+    dateStr: "06/29/2026 17:30"
+  },
+  {
+    id: "75",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Netherlands",
+    awayLabel: "Morocco",
+    dateStr: "06/29/2026 22:00"
+  },
+  {
+    id: "76",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Brazil",
+    awayLabel: "Japan",
+    dateStr: "06/29/2026 14:00"
+  },
+  {
+    id: "77",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "France",
+    awayLabel: "Sweden",
+    dateStr: "06/30/2026 18:00"
+  },
+  {
+    id: "78",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Ivory Coast",
+    awayLabel: "Norway",
+    dateStr: "06/30/2026 14:00"
+  },
+  {
+    id: "79",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Mexico",
+    awayLabel: "Ecuador",
+    dateStr: "06/30/2026 22:00"
+  },
+  {
+    id: "80",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "England",
+    awayLabel: "Democratic Republic of the Congo",
+    dateStr: "07/01/2026 13:00"
+  },
+  {
+    id: "81",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "United States",
+    awayLabel: "Bosnia and Herzegovina",
+    dateStr: "07/01/2026 21:00"
+  },
+  {
+    id: "82",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Belgium",
+    awayLabel: "Senegal",
+    dateStr: "07/01/2026 17:00"
+  },
+  {
+    id: "83",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Portugal",
+    awayLabel: "Croatia",
+    dateStr: "07/02/2026 20:00"
+  },
+  {
+    id: "84",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Spain",
+    awayLabel: "Austria",
+    dateStr: "07/02/2026 16:00"
+  },
+  {
+    id: "85",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Switzerland",
+    awayLabel: "Algeria",
+    dateStr: "07/03/2026 00:00"
+  },
+  {
+    id: "86",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Argentina",
+    awayLabel: "Cape Verde",
+    dateStr: "07/03/2026 19:00"
+  },
+  {
+    id: "87",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Colombia",
+    awayLabel: "Ghana",
+    dateStr: "07/03/2026 22:30"
+  },
+  {
+    id: "88",
+    groupName: "Dezesseis-avos (R32)",
+    stage: "R32",
+    homeLabel: "Australia",
+    awayLabel: "Egypt",
+    dateStr: "07/03/2026 15:00"
+  },
+  {
+    id: "89",
+    groupName: "Oitavas de Final (R16)",
+    stage: "R16",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/04/2026 18:00"
+  },
+  {
+    id: "90",
+    groupName: "Oitavas de Final (R16)",
+    stage: "R16",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/04/2026 14:00"
+  },
+  {
+    id: "91",
+    groupName: "Oitavas de Final (R16)",
+    stage: "R16",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/05/2026 17:00"
+  },
+  {
+    id: "92",
+    groupName: "Oitavas de Final (R16)",
+    stage: "R16",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/05/2026 21:00"
+  },
+  {
+    id: "93",
+    groupName: "Oitavas de Final (R16)",
+    stage: "R16",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/06/2026 16:00"
+  },
+  {
+    id: "94",
+    groupName: "Oitavas de Final (R16)",
+    stage: "R16",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/06/2026 21:00"
+  },
+  {
+    id: "95",
+    groupName: "Oitavas de Final (R16)",
+    stage: "R16",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/07/2026 13:00"
+  },
+  {
+    id: "96",
+    groupName: "Oitavas de Final (R16)",
+    stage: "R16",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/07/2026 17:00"
+  },
+  {
+    id: "97",
+    groupName: "Quartas de Final (QF)",
+    stage: "QF",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/09/2026 17:00"
+  },
+  {
+    id: "98",
+    groupName: "Quartas de Final (QF)",
+    stage: "QF",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/10/2026 16:00"
+  },
+  {
+    id: "99",
+    groupName: "Quartas de Final (QF)",
+    stage: "QF",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/11/2026 18:00"
+  },
+  {
+    id: "100",
+    groupName: "Quartas de Final (QF)",
+    stage: "QF",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/11/2026 22:00"
+  },
+  {
+    id: "101",
+    groupName: "Semifinal (SF)",
+    stage: "SF",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/14/2026 16:00"
+  },
+  {
+    id: "102",
+    groupName: "Semifinal (SF)",
+    stage: "SF",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/15/2026 16:00"
+  },
+  {
+    id: "103",
+    groupName: "Disputa de 3º Lugar",
+    stage: "3RD",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/18/2026 18:00"
+  },
+  {
+    id: "104",
+    groupName: "Final",
+    stage: "FINAL",
+    homeLabel: "A definir",
+    awayLabel: "A definir",
+    dateStr: "07/19/2026 16:00"
+  }
+];
+
+export const allTeamsList = groupsData.flatMap(g => g.teams).sort((a, b) => a.name.localeCompare(b.name));
+
 

@@ -1,24 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 :root {
   --bg-color: #080c14;
-  --card-bg: rgba(15, 23, 42, 0.65);
+  --card-bg: #111a2e; /* Fundo azul ligeiramente mais claro */
   --card-border: rgba(255, 255, 255, 0.06);
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
   
-  --primary: #10b981; /* Verde esmeralda */
+  --primary: #10b981;
   --primary-hover: #059669;
   --primary-glow: rgba(16, 185, 129, 0.25);
   
-  --secondary: #f59e0b; /* Amarelo ouro/ouro */
-  --secondary-glow: rgba(245, 158, 11, 0.2);
+  --secondary: #8bef1a; /* Verde limão contrastante eSport */
+  --secondary-glow: rgba(139, 239, 26, 0.18);
   
-  --accent: #3b82f6; /* Azul copa */
+  --accent: #3b82f6;
   --error: #ef4444;
-  --success: #10b981;
+  --success: #8bef1a;
   
   --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-condensed: 'Barlow Condensed', sans-serif; /* Fonte alta e condensada */
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --radius: 16px;
   --radius-sm: 8px;
@@ -1941,4 +1942,694 @@ input:checked + .slider:before {
   box-shadow: 0 0 8px rgba(59, 130, 246, 0.15);
 }
 
+/* Palpite de Campeão */
+.champion-card {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.04) 0%, rgba(15, 23, 42, 0.7) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+}
 
+.champion-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.08);
+  padding-bottom: 12px;
+}
+
+.champion-card-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.champion-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.team-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.flag-icon-lg {
+  width: 44px;
+  height: 30px;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.custom-select.champion-select {
+  flex-grow: 1;
+  max-width: 400px;
+  padding: 10px 40px 10px 14px;
+  font-size: 0.95rem;
+  background-color: #0f172a;
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.champion-card-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.locked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--error);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 4px 10px;
+  border-radius: 100px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Badges de campeão na classificação */
+.user-champ-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: var(--secondary);
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.leaderboard-champ-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--secondary);
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* Custom Sub-tabs styling */
+.subtabs-navigation {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+/* Bracket (Chaveamento) Layout */
+.bracket-wrapper {
+  width: 100%;
+  padding: 10px 0 30px 0;
+  background: #080c14;
+}
+
+.bracket-container {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  height: 1100px;
+  box-sizing: border-box;
+}
+
+.bracket-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 110px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 5px 0;
+}
+
+.bracket-column-title {
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 6px;
+}
+
+.bracket-match-list {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  flex-grow: 1;
+  height: calc(100% - 40px);
+}
+
+.bracket-column.center-column .bracket-match-list {
+  justify-content: center;
+  gap: 60px;
+}
+
+/* Placar e Elementos eSport Flat Design */
+.match-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: var(--transition);
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.match-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--secondary);
+  box-shadow: 0 8px 24px rgba(139, 239, 26, 0.1);
+}
+
+.team-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 42%;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  transition: var(--transition);
+}
+
+.team-container:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.team-container.home {
+  justify-content: flex-start;
+  text-align: left;
+  flex-direction: row; /* Força bandeira à esquerda */
+}
+
+.team-container.away {
+  justify-content: flex-start;
+  text-align: left;
+  flex-direction: row; /* Força bandeira à esquerda */
+}
+
+/* Destaque para Vencedor Selecionado (Broadcast Style) */
+.team-container.selected-winner {
+  background: var(--secondary-glow) !important;
+  border-color: var(--secondary) !important;
+  box-shadow: 0 0 10px rgba(139, 239, 26, 0.12);
+}
+
+.team-container.selected-winner .team-name {
+  color: var(--secondary) !important;
+  font-weight: 700;
+}
+
+.flag-placeholder {
+  width: 28px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+/* Botão de Cadeado e Estilos de Trancamento */
+.lock-toggle-btn:hover {
+  color: var(--secondary) !important;
+  transform: scale(1.1);
+}
+
+/* Navegação Mobile para Chaveamento */
+.mobile-bracket-nav {
+  display: none;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bracket-nav-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: 100px;
+  font-family: var(--font-condensed);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition);
+}
+
+.bracket-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+}
+
+.bracket-nav-btn.active {
+  background: var(--secondary-glow) !important;
+  border-color: var(--secondary) !important;
+  color: var(--text-main) !important;
+}
+
+@media (max-width: 1023px) {
+  .mobile-bracket-nav {
+    display: flex;
+  }
+  
+  .bracket-container {
+    min-width: 100% !important;
+    height: auto !important;
+    flex-direction: column !important;
+    gap: 20px !important;
+    padding: 0 4px;
+  }
+  
+  .bracket-column {
+    display: none !important;
+  }
+  
+  .bracket-column.active-mobile {
+    display: flex !important;
+    height: auto !important;
+  }
+  
+  .bracket-match-list {
+    gap: 16px !important;
+    height: auto !important;
+  }
+}
+
+/* ==========================================
+   ESTILOS DO PÓDIO DA COPA (1º, 2º E 3º)
+   ========================================== */
+.podium-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  transition: var(--transition);
+}
+
+.podium-card:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.podium-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 12px;
+}
+
+.podium-card-header h3 {
+  font-family: var(--font-condensed);
+  font-size: 1.3rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+}
+
+.unlocked-badge {
+  background: rgba(139, 239, 26, 0.12);
+  color: var(--secondary);
+  border: 1px solid rgba(139, 239, 26, 0.2);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.podium-deadline-alert {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px dashed rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.podium-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 24px;
+  margin-top: 10px;
+}
+
+.podium-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 30%;
+  min-width: 140px;
+}
+
+.podium-flag-wrapper {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s var(--transition);
+}
+
+.podium-block:hover .podium-flag-wrapper {
+  transform: translateY(-4px) scale(1.05);
+}
+
+.podium-flag {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.podium-flag-placeholder {
+  font-size: 1.8rem;
+  font-weight: 900;
+  color: var(--text-muted);
+}
+
+.podium-select {
+  width: 100%;
+  background: #131e35;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition);
+}
+
+.podium-select:hover:not(:disabled) {
+  border-color: var(--secondary);
+}
+
+.podium-select:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.podium-step {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  border-radius: 8px 8px 4px 4px;
+  margin-top: 14px;
+  padding-top: 16px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+.step-rank {
+  font-family: var(--font-condensed);
+  font-size: 2.2rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.step-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.95;
+  margin-top: 4px;
+}
+
+/* Alturas e gradientes de cores dos pedestais do Pódio */
+.silver-block .podium-step {
+  height: 100px;
+  background: linear-gradient(180deg, #c0c0c0 0%, #4a5568 100%);
+  border-top: 2px solid #e2e8f0;
+}
+
+.gold-block .podium-step {
+  height: 140px;
+  background: linear-gradient(180deg, #f59e0b 0%, #7c2d12 100%);
+  border-top: 2px solid #fbbf24;
+}
+
+.bronze-block .podium-step {
+  height: 76px;
+  background: linear-gradient(180deg, #cd7f32 0%, #451a03 100%);
+  border-top: 2px solid #f97316;
+}
+
+/* Responsividade do Pódio */
+@media (max-width: 640px) {
+  .podium-container {
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  
+  .podium-block {
+    width: 100%;
+    max-width: 300px;
+  }
+  
+  .podium-step {
+    height: auto !important;
+    padding: 10px 0;
+    border-radius: 8px;
+  }
+  
+  .step-rank {
+    font-size: 1.5rem;
+  }
+}
+
+/* ==========================================
+   VISUALIZAÇÃO COMPACTA DO CHAVEAMENTO (SEM SCROLL)
+   ========================================== */
+.bracket-match-list .match-card {
+  padding: 8px 6px !important;
+  gap: 4px !important;
+  border-radius: 8px !important;
+  border-color: rgba(255, 255, 255, 0.04) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.bracket-match-list .match-header {
+  font-size: 0.62rem !important;
+  padding-bottom: 2px !important;
+  margin-bottom: 2px !important;
+}
+
+.bracket-match-list .match-body {
+  flex-direction: column !important;
+  gap: 4px !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+.bracket-match-list .team-container {
+  width: 100% !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  padding: 3px 4px !important;
+  background: rgba(255, 255, 255, 0.01) !important;
+  border-radius: 6px !important;
+  border: 1px solid rgba(255, 255, 255, 0.03) !important;
+}
+
+.bracket-match-list .team-container:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.bracket-match-list .team-container.selected-winner {
+  background: var(--secondary-glow) !important;
+  border-color: var(--secondary) !important;
+}
+
+.bracket-match-list .team-name {
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+  max-width: 90px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.bracket-match-list .flag-icon {
+  width: 18px !important;
+  height: 12px !important;
+  border-radius: 1px !important;
+}
+
+.bracket-match-list .flag-placeholder {
+  width: 18px !important;
+  height: 12px !important;
+  font-size: 0.6rem !important;
+}
+
+.bracket-match-list .score-container {
+  gap: 3px !important;
+  margin: 2px 0 !important;
+}
+
+.bracket-match-list .score-input {
+  width: 24px !important;
+  height: 24px !important;
+  font-size: 0.78rem !important;
+  padding: 0 !important;
+  text-align: center !important;
+  border-radius: 4px !important;
+}
+
+.bracket-match-list .score-divider {
+  font-size: 0.65rem !important;
+  opacity: 0.5 !important;
+}
+
+.bracket-match-list .match-date-info {
+  font-size: 0.58rem !important;
+  text-align: center !important;
+  margin-top: 1px !important;
+  opacity: 0.7 !important;
+}
+
+.bracket-match-list .gabarito-score-info {
+  font-size: 0.58rem !important;
+  text-align: center !important;
+  margin-top: 1px !important;
+}
+
+/* MINI PÓDIO NA TABELA DE CLASSIFICAÇÃO */
+.user-podium-badges {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.mini-podium-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mini-podium-badge.first {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.mini-podium-badge.second {
+  background: rgba(203, 213, 225, 0.12);
+  border-color: rgba(203, 213, 225, 0.3);
+  color: #cbd5e1;
+}
+
+.mini-podium-badge.third {
+  background: rgba(249, 115, 22, 0.12);
+  border-color: rgba(249, 115, 22, 0.3);
+  color: #fb923c;
+}
+
+/* Efeitos de Destaque Dinâmico das Fases Ativas */
+.bracket-column {
+  transition: opacity 0.4s ease, transform 0.4s ease, filter 0.4s ease !important;
+}
+
+.bracket-column.inactive-stage {
+  opacity: 0.28 !important;
+  filter: grayscale(40%) blur(0.2px) !important;
+  transform: scale(0.97) !important;
+}
+
+.bracket-column.inactive-stage:hover {
+  opacity: 0.95 !important;
+  filter: none !important;
+  transform: scale(1.0) !important;
+}
+
+.bracket-column.active-stage {
+  opacity: 1.0 !important;
+  filter: none !important;
+  transform: scale(1.0) !important;
+}
+
+.bracket-column.active-stage .bracket-column-title {
+  color: var(--secondary) !important;
+  text-shadow: 0 0 10px rgba(139, 239, 26, 0.4) !important;
+  border-bottom-color: var(--secondary) !important;
+}
+
+.bracket-column.active-stage .match-card {
+  border-color: rgba(139, 239, 26, 0.15) !important;
+  box-shadow: 0 0 12px rgba(139, 239, 26, 0.05) !important;
+}
+
+/* Tamanho do Badge Compacto no Chaveamento */
+.bracket-match-list .points-badge {
+  font-size: 0.6rem !important;
+  padding: 1px 4px !important;
+  border-radius: 4px !important;
+  display: inline-block !important;
+  text-align: center !important;
+  max-width: 90% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
