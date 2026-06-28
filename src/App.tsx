@@ -995,6 +995,7 @@ export default function App() {
       if (isLocked) return;
       
       const match = getUserKnockoutMatches(selectedUser).find(m => m.id === matchId);
+      // Só permite clique em time quando os times reais já foram divulgados
       if (!match || match.homeTeam.code === "" || match.awayTeam.code === "") return;
       
       const currentWinner = tempGuesses[`WINNER_${matchId}`] || allGuesses[selectedUser]?.[`WINNER_${matchId}`] || "";
@@ -1309,6 +1310,8 @@ export default function App() {
   // Renderizador unificado para cartões de jogos do Mata-Mata
   const renderKnockoutMatchCard = (match: KnockoutMatch, type: "palpite" | "gabarito") => {
     const started = isMatchStarted(match.id);
+    // isDecided: apenas indica se os times reais já foram divulgados pela API.
+    // NÃO bloqueia palpites — o usuário pode palpitar mesmo antes dos times serem definidos.
     const isDecided = match.homeTeam.code !== "" && match.awayTeam.code !== "";
     
     // Bloqueio voluntário (cadeado)
@@ -1317,9 +1320,10 @@ export default function App() {
       (tempGuesses[`MANUAL_LOCKED_${match.id}`] === undefined && allGuesses[selectedUser]?.[`MANUAL_LOCKED_${match.id}`] === true)
     );
 
+    // Palpites liberados até o jogo começar, independentemente de os times estarem definidos ou não.
     const isLocked = type === "gabarito" 
       ? !isAdminAuthenticated 
-      : (started || !isDecided || guessesLocked || isManuallyLocked);
+      : (started || guessesLocked || isManuallyLocked);
     
     const guess = type === "palpite" 
       ? (tempGuesses[match.id] || { home: null, away: null })
@@ -1355,7 +1359,7 @@ export default function App() {
           
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {/* Botão de Cadeado Manual */}
-            {type === "palpite" && isDecided && !started && (
+            {type === "palpite" && !started && (
               <button
                 type="button"
                 onClick={() => handleToggleManualLock(match.id)}
@@ -1401,7 +1405,7 @@ export default function App() {
           <div 
             className={`team-container home ${selectedWinner === match.homeTeam.name ? "selected-winner" : ""}`}
             onClick={() => handleTeamClick(match.id, match.homeTeam.name, type)}
-            style={{ cursor: (type === "palpite" && !isLocked && match.homeTeam.code !== "") ? "pointer" : (type === "gabarito" && isAdminAuthenticated && match.homeTeam.code !== "") ? "pointer" : "default" }}
+            style={{ cursor: (type === "palpite" && !isLocked && isDecided) ? "pointer" : (type === "gabarito" && isAdminAuthenticated && match.homeTeam.code !== "") ? "pointer" : "default" }}
           >
             {match.homeTeam.code ? (
               <img
@@ -1450,7 +1454,7 @@ export default function App() {
           <div 
             className={`team-container away ${selectedWinner === match.awayTeam.name ? "selected-winner" : ""}`}
             onClick={() => handleTeamClick(match.id, match.awayTeam.name, type)}
-            style={{ cursor: (type === "palpite" && !isLocked && match.awayTeam.code !== "") ? "pointer" : (type === "gabarito" && isAdminAuthenticated && match.awayTeam.code !== "") ? "pointer" : "default" }}
+            style={{ cursor: (type === "palpite" && !isLocked && isDecided) ? "pointer" : (type === "gabarito" && isAdminAuthenticated && match.awayTeam.code !== "") ? "pointer" : "default" }}
           >
             {match.awayTeam.code ? (
               <img
