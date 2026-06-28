@@ -279,7 +279,7 @@ const resolveKnockoutMatches = (apiGames: any[]): KnockoutMatch[] => {
 
 export default function App() {
   // Controle de Abas
-  const [activeTab, setActiveTab] = useState<"ranking_final" | "palpites_final" | "grupos" | "gabarito">("ranking_final");
+  const [activeTab, setActiveTab] = useState<"ranking_total" | "ranking_final" | "palpites_final" | "grupos" | "gabarito">("ranking_total");
   const [gruposSubTab, setGruposSubTab] = useState<"ranking_grupos" | "palpites_grupos" | "tabela_grupos">("ranking_grupos");
   const [adminSubTab, setAdminSubTab] = useState<"gabarito_final" | "gabarito_grupos">("gabarito_final");
   
@@ -947,6 +947,39 @@ export default function App() {
     });
   };
 
+  // Processa a classificação Total (Geral) = Grupos + Final
+  const getLeaderboardTotal = () => {
+    const finalLeaderboard = getLeaderboardFinal();
+    const groupsLeaderboard = getLeaderboardGroups();
+    
+    const totalLeaderboard = participants.map((name) => {
+      const finalStats = finalLeaderboard.find(p => p.name === name) || { points: 0, exactScores: 0, outcomeOnly: 0, errors: 0, playedCount: 0 };
+      const groupsStats = groupsLeaderboard.find(p => p.name === name) || { points: 0, exactScores: 0, outcomeOnly: 0, errors: 0, playedCount: 0 };
+      
+      return {
+        name,
+        points: finalStats.points + groupsStats.points,
+        pointsGrupos: groupsStats.points,
+        pointsFinal: finalStats.points,
+        exactScores: finalStats.exactScores + groupsStats.exactScores,
+        outcomeOnly: finalStats.outcomeOnly + groupsStats.outcomeOnly,
+        errors: finalStats.errors + groupsStats.errors,
+        playedCount: finalStats.playedCount + groupsStats.playedCount
+      };
+    });
+
+    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético
+    return totalLeaderboard.sort((a, b) => {
+      if (b.points !== a.points) {
+        return b.points - a.points;
+      }
+      if (b.exactScores !== a.exactScores) {
+        return b.exactScores - a.exactScores;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  };
+
   // Trata alteração no palpite do Pódio da Copa (1º, 2º ou 3º lugares)
   const handlePodiumChange = (place: "first" | "second" | "third", teamName: string, type: "palpite" | "gabarito") => {
     const key = place === "first" ? "cup_champion" : place === "second" ? "cup_second" : "cup_third";
@@ -1252,7 +1285,8 @@ export default function App() {
     : filteredMatches;
   const rankingFinal = getLeaderboardFinal();
   const rankingGroups = getLeaderboardGroups();
-  const activeRanking = (activeTab === "ranking_final" || activeTab === "palpites_final") ? rankingFinal : rankingGroups;
+  const rankingTotal = getLeaderboardTotal();
+  const activeRanking = activeTab === "ranking_total" ? rankingTotal : ((activeTab === "ranking_final" || activeTab === "palpites_final") ? rankingFinal : rankingGroups);
   const topThree = activeRanking.slice(0, 3);
 
   // Calcula a classificação de um grupo específico
@@ -1554,7 +1588,7 @@ export default function App() {
         </div>
         <h1 className="app-title">🏆 Bolão do PiPA copa 2026</h1>
         <p className="app-subtitle">🇧🇷 Vai Brasil! Hexa ou chora! 🏆</p>
-        {(activeTab === "ranking_final" || activeTab === "grupos") && (
+        {(activeTab === "ranking_total" || activeTab === "ranking_final" || activeTab === "grupos") && (
           <div className="print-user-title print-only">
             Classificação Geral
           </div>
@@ -1580,6 +1614,22 @@ export default function App() {
 
       {/* Navegação por Abas */}
       <nav className="tabs-navigation">
+        <button 
+          className={`tab-btn ${activeTab === "ranking_total" ? "active" : ""}`}
+          onClick={() => {
+            if (hasChanges) {
+              if (confirm("Você tem alterações não salvas. Deseja mudar de aba e perder as edições?")) {
+                setHasChanges(false);
+                setActiveTab("ranking_total");
+              }
+            } else {
+              setActiveTab("ranking_total");
+            }
+          }}
+        >
+          <Trophy size={18} color="gold" />
+          Ranking Geral Definitivo
+        </button>
         <button 
           className={`tab-btn ${activeTab === "ranking_final" ? "active" : ""}`}
           onClick={() => {
@@ -1653,6 +1703,120 @@ export default function App() {
         </div>
       ) : (
         <>
+          {/* ABA 0: CLASSIFICAÇÃO / RANKING GERAL DEFINITIVO */}
+          {activeTab === "ranking_total" && (
+            <div className="ranking-container">
+              <div className="pdf-actions no-print">
+                <button className="pdf-btn" onClick={() => window.print()}>
+                  <FileText size={16} />
+                  Salvar PDF do Ranking Geral
+                </button>
+              </div>
+              
+              <div className="podium-section" style={{ background: "linear-gradient(145deg, #1f2937, #111827)", border: "1px solid #fbbf24", boxShadow: "0 0 20px rgba(251, 191, 36, 0.2)" }}>
+                {/* 2º Lugar */}
+                {rankingTotal[1] && (
+                  <div className="podium-card second">
+                    <div className="podium-avatar" style={{ padding: participantAvatars[rankingTotal[1].name] ? "0" : undefined }}>
+                      {participantAvatars[rankingTotal[1].name] ? (
+                        <img src={participantAvatars[rankingTotal[1].name]} alt={rankingTotal[1].name} className="avatar-img" />
+                      ) : (
+                        rankingTotal[1].name.substring(0, 2).toUpperCase()
+                      )}
+                      <span className="badge-place">2</span>
+                    </div>
+                    <h3 className="podium-name">{rankingTotal[1].name}</h3>
+                    <p className="podium-points">{rankingTotal[1].points} pts</p>
+                    <p className="podium-stats" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                      Mata-Mata: <span style={{color: 'var(--accent)'}}>{rankingTotal[1].pointsFinal}</span> | Grupos: <span style={{color: 'var(--text-muted)'}}>{rankingTotal[1].pointsGrupos}</span>
+                    </p>
+                  </div>
+                )}
+                
+                {/* 1º Lugar */}
+                {rankingTotal[0] && (
+                  <div className="podium-card first">
+                    <div className="podium-avatar" style={{ padding: participantAvatars[rankingTotal[0].name] ? "0" : undefined, border: "3px solid #fbbf24", boxShadow: "0 0 15px #fbbf24" }}>
+                      <Crown size={24} className="crown-icon" style={{ color: "#fbbf24", position: "absolute", top: "-30px", left: "50%", transform: "translateX(-50%)" }} />
+                      {participantAvatars[rankingTotal[0].name] ? (
+                        <img src={participantAvatars[rankingTotal[0].name]} alt={rankingTotal[0].name} className="avatar-img" />
+                      ) : (
+                        rankingTotal[0].name.substring(0, 2).toUpperCase()
+                      )}
+                      <span className="badge-place">1</span>
+                    </div>
+                    <h3 className="podium-name" style={{ color: "#fbbf24" }}>{rankingTotal[0].name}</h3>
+                    <p className="podium-points" style={{ color: "#fbbf24" }}>{rankingTotal[0].points} pts</p>
+                    <p className="podium-stats" style={{ fontSize: '0.8rem', marginTop: '4px', color: '#fbbf24' }}>
+                      Mata-Mata: <span>{rankingTotal[0].pointsFinal}</span> | Grupos: <span>{rankingTotal[0].pointsGrupos}</span>
+                    </p>
+                  </div>
+                )}
+                
+                {/* 3º Lugar */}
+                {rankingTotal[2] && (
+                  <div className="podium-card third">
+                    <div className="podium-avatar" style={{ padding: participantAvatars[rankingTotal[2].name] ? "0" : undefined }}>
+                      {participantAvatars[rankingTotal[2].name] ? (
+                        <img src={participantAvatars[rankingTotal[2].name]} alt={rankingTotal[2].name} className="avatar-img" />
+                      ) : (
+                        rankingTotal[2].name.substring(0, 2).toUpperCase()
+                      )}
+                      <span className="badge-place">3</span>
+                    </div>
+                    <h3 className="podium-name">{rankingTotal[2].name}</h3>
+                    <p className="podium-points">{rankingTotal[2].points} pts</p>
+                    <p className="podium-stats" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                      Mata-Mata: <span style={{color: 'var(--accent)'}}>{rankingTotal[2].pointsFinal}</span> | Grupos: <span style={{color: 'var(--text-muted)'}}>{rankingTotal[2].pointsGrupos}</span>
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="table-wrapper">
+                <table className="ranking-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "40px", textAlign: "center" }}>#</th>
+                      <th>Participante</th>
+                      <th style={{ textAlign: "center", color: "var(--accent)" }}>Mata-Mata</th>
+                      <th style={{ textAlign: "center", color: "var(--text-muted)" }}>Grupos</th>
+                      <th style={{ textAlign: "center" }}>Total Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankingTotal.map((participant, index) => (
+                      <tr key={participant.name} className={index < 3 ? "top-3" : ""}>
+                        <td style={{ textAlign: "center" }}>
+                          {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}º`}
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            {participantAvatars[participant.name] ? (
+                              <img src={participantAvatars[participant.name]} alt={participant.name} className="table-avatar" />
+                            ) : (
+                              <div className="table-avatar-placeholder">
+                                {participant.name.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <span style={{ fontWeight: index === 0 ? "bold" : "normal", color: index === 0 ? "#fbbf24" : "inherit" }}>
+                              {participant.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "center", fontWeight: "600", color: "var(--accent)" }}>{participant.pointsFinal}</td>
+                        <td style={{ textAlign: "center", color: "var(--text-muted)" }}>{participant.pointsGrupos}</td>
+                        <td style={{ textAlign: "center", fontWeight: "bold", color: index === 0 ? "#fbbf24" : "white" }}>
+                          {participant.points}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* ABA 1: CLASSIFICAÇÃO / RANKING (FASE FINAL) */}
           {activeTab === "ranking_final" && (
             <div className="ranking-container">
