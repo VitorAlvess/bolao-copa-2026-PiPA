@@ -315,8 +315,12 @@ export default function App() {
       // Se o jogo já acabou na vida real, usa o resultado oficial
       const real = gabarito[matchId];
       if (real && real.home !== null && real.away !== null) {
-        if (real.home > real.away) return match.homeTeam;
-        if (real.away > real.home) return match.awayTeam;
+        const homeScore = Number(real.home);
+        const awayScore = Number(real.away);
+        if (homeScore > awayScore) return match.homeTeam;
+        if (awayScore > homeScore) return match.awayTeam;
+        
+        // Em caso de empate real oficial
         const officialWinnerName = gabarito[`WINNER_${matchId}`];
         if (officialWinnerName) {
           return match.homeTeam.name === officialWinnerName ? match.homeTeam : match.awayTeam;
@@ -325,16 +329,21 @@ export default function App() {
 
       // Senão, usa o palpite do usuário
       const guess = userGuesses[matchId];
-      const clickedWinner = userGuesses[`WINNER_${matchId}`];
+      if (!guess || guess.home === null || guess.away === null) return null;
 
-      if (clickedWinner) {
-        if (match.homeTeam.name === clickedWinner) return match.homeTeam;
-        if (match.awayTeam.name === clickedWinner) return match.awayTeam;
-      }
+      const homeScore = Number(guess.home);
+      const awayScore = Number(guess.away);
 
-      if (guess && guess.home !== null && guess.away !== null) {
-        if (guess.home > guess.away) return match.homeTeam;
-        if (guess.away > guess.home) return match.awayTeam;
+      if (homeScore > awayScore) {
+        return match.homeTeam;
+      } else if (awayScore > homeScore) {
+        return match.awayTeam;
+      } else {
+        // Empate nos palpites: exige o clique manual para definir classificado
+        const clickedWinner = userGuesses[`WINNER_${matchId}`];
+        if (clickedWinner) {
+          return match.homeTeam.name === clickedWinner ? match.homeTeam : match.awayTeam;
+        }
       }
 
       return null;
@@ -390,16 +399,20 @@ export default function App() {
       if (!match) return null;
 
       const real = gabarito[matchId];
-      const clickedWinner = gabarito[`WINNER_${matchId}`];
+      if (!real || real.home === null || real.away === null) return null;
 
-      if (clickedWinner) {
-        if (match.homeTeam.name === clickedWinner) return match.homeTeam;
-        if (match.awayTeam.name === clickedWinner) return match.awayTeam;
-      }
+      const homeScore = Number(real.home);
+      const awayScore = Number(real.away);
 
-      if (real && real.home !== null && real.away !== null) {
-        if (real.home > real.away) return match.homeTeam;
-        if (real.away > real.home) return match.awayTeam;
+      if (homeScore > awayScore) {
+        return match.homeTeam;
+      } else if (awayScore > homeScore) {
+        return match.awayTeam;
+      } else {
+        const clickedWinner = gabarito[`WINNER_${matchId}`];
+        if (clickedWinner) {
+          return match.homeTeam.name === clickedWinner ? match.homeTeam : match.awayTeam;
+        }
       }
 
       return null;
@@ -1043,6 +1056,19 @@ export default function App() {
 
   // Salva os palpites no Supabase
   const saveUserGuesses = async () => {
+    // Validação de empates sem classificado definido
+    const userKnockoutMatches = getUserKnockoutMatches(selectedUser);
+    for (const match of userKnockoutMatches) {
+      const guess = tempGuesses[match.id] || allGuesses[selectedUser]?.[match.id];
+      if (guess && guess.home !== null && guess.away !== null && Number(guess.home) === Number(guess.away)) {
+        const winner = tempGuesses[`WINNER_${match.id}`] || allGuesses[selectedUser]?.[`WINNER_${match.id}`];
+        if (!winner) {
+          showToast(`Defina quem avança no empate do jogo ${match.homeTeam.name} x ${match.awayTeam.name}!`, "error");
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     try {
       const { error } = await supabase
@@ -1073,6 +1099,19 @@ export default function App() {
 
   // Salva o gabarito oficial no Supabase
   const saveGabarito = async () => {
+    // Validação de empates sem classificado definido no Gabarito Oficial
+    const officialKnockoutMatches = getOfficialKnockoutMatches();
+    for (const match of officialKnockoutMatches) {
+      const result = tempGabarito[match.id] || gabarito[match.id];
+      if (result && result.home !== null && result.away !== null && Number(result.home) === Number(result.away)) {
+        const winner = tempGabarito[`WINNER_${match.id}`] || gabarito[`WINNER_${match.id}`];
+        if (!winner) {
+          showToast(`Defina o classificado oficial no empate de ${match.homeTeam.name} x ${match.awayTeam.name}!`, "error");
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     try {
       const { error } = await supabase
@@ -1338,16 +1377,14 @@ export default function App() {
 
     // Vencedor selecionado (para destaque visual no Flat Design e clonagem)
     const selectedWinner = type === "palpite"
-      ? (tempGuesses[`WINNER_${match.id}`] || allGuesses[selectedUser]?.[`WINNER_${match.id}`] || (
-          guess && guess.home !== null && guess.away !== null && guess.home !== guess.away
-            ? (guess.home > guess.away ? match.homeTeam.name : match.awayTeam.name)
-            : ""
-        ))
-      : (tempGabarito[`WINNER_${match.id}`] || gabarito[`WINNER_${match.id}`] || (
-          guess && guess.home !== null && guess.away !== null && guess.home !== guess.away
-            ? (guess.home > guess.away ? match.homeTeam.name : match.awayTeam.name)
-            : ""
-        ));
+      ? (guess && guess.home !== null && guess.away !== null && Number(guess.home) !== Number(guess.away)
+          ? (Number(guess.home) > Number(guess.away) ? match.homeTeam.name : match.awayTeam.name)
+          : (tempGuesses[`WINNER_${match.id}`] || allGuesses[selectedUser]?.[`WINNER_${match.id}`] || "")
+        )
+      : (guess && guess.home !== null && guess.away !== null && Number(guess.home) !== Number(guess.away)
+          ? (Number(guess.home) > Number(guess.away) ? match.homeTeam.name : match.awayTeam.name)
+          : (tempGabarito[`WINNER_${match.id}`] || gabarito[`WINNER_${match.id}`] || "")
+        );
 
     return (
       <div key={match.id} className={`match-card ${isLocked ? "locked-match" : ""}`} style={{ opacity: isLocked ? 0.9 : 1 }}>
