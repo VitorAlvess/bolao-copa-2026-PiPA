@@ -1207,9 +1207,9 @@ export default function App() {
   };
 
   const isPodiumLocked = (): boolean => {
-    // Fuso de São Paulo (GMT-3). Prazo: 28/06/2026 às 23:59:59.
-    // Em UTC, isso é 29/06/2026 às 02:59:59 (pois BRT é UTC-3).
-    const deadline = new Date("2026-06-29T02:59:59Z");
+    // Fuso de São Paulo (GMT-3). Prazo: 30/06/2026 às 12:00:00.
+    // Em UTC, isso é 30/06/2026 às 15:00:00 (pois BRT é UTC-3).
+    const deadline = new Date("2026-06-30T15:00:00Z");
     const now = new Date();
     return now >= deadline;
   };
@@ -2160,14 +2160,14 @@ export default function App() {
                       {isLocked ? (
                         <span className="locked-badge"><Lock size={12} /> Palpites Encerrados</span>
                       ) : (
-                        <span className="unlocked-badge">⏳ Aberto até as 23:59 de hoje!</span>
+                        <span className="unlocked-badge">⏳ Aberto até amanhã às 12:00!</span>
                       )}
                     </div>
                     
                     <div className="podium-card-body">
                       {/* Mensagem de prazo bem destacada */}
                       <div className="podium-deadline-alert">
-                        ⚠️ Atenção: Os palpites do pódio (1º, 2º e 3º lugares) devem ser salvos até o final do dia de hoje (28/06/2026 às 23:59)!
+                        ⚠️ Atenção: Os palpites do pódio (1º, 2º e 3º lugares) devem ser salvos até 30/06/2026 às 12:00!
                       </div>
 
                       <div className="podium-container">
