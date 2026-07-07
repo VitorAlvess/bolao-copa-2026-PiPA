@@ -791,7 +791,13 @@ export default function App() {
   };
 
   // Lógica de cálculo de pontos por partida
-  const calculateMatchPoints = (guess: Score | undefined, real: Score | undefined): { points: number; type: "exact" | "outcome" | "zero" | "none" } => {
+  const calculateMatchPoints = (
+    guess: Score | undefined,
+    real: Score | undefined,
+    isKnockout: boolean = false,
+    guessWinner: string | null = null,
+    realWinner: string | null = null
+  ): { points: number; type: "exact" | "outcome" | "zero" | "none" } => {
     if (!real || real.home === null || real.away === null || real.home === undefined || real.away === undefined) {
       return { points: 0, type: "none" }; // Jogo ainda não aconteceu
     }
@@ -804,20 +810,41 @@ export default function App() {
     const realHome = Number(real.home);
     const realAway = Number(real.away);
 
-    const guessSign = Math.sign(guessHome - guessAway); // 1 = casa vence, -1 = fora vence, 0 = empate
-    const realSign = Math.sign(realHome - realAway);
-
-    const isCorrectOutcome = guessSign === realSign;
     const isExactScore = guessHome === realHome && guessAway === realAway;
 
-    if (isExactScore) {
-      return { points: 3, type: "exact" }; // Placar exato (3 pts)
-    } else if (isCorrectOutcome) {
-      return { points: 1, type: "outcome" }; // Vencedor ou empate correto, mas placar diferente (1 pt)
-    }
+    if (isKnockout) {
+      const isDraw = realHome === realAway;
 
-    return { points: 0, type: "zero" }; // Errou tudo
+      if (isExactScore) {
+        // Se for empate e placar exato, leva 3 pontos (mesmo errando quem classificou)
+        // Se for jogo decidido no tempo normal e placar exato, também leva 3 pontos
+        return { points: 3, type: "exact" };
+      }
+
+      // Se não for placar exato, o participante pontua apenas se acertar o vencedor/classificado
+      const isCorrectWinner = guessWinner && realWinner && guessWinner === realWinner;
+      if (isCorrectWinner) {
+        return { points: 1, type: "outcome" };
+      }
+
+      return { points: 0, type: "zero" };
+    } else {
+      // Fase de grupos
+      const guessSign = Math.sign(guessHome - guessAway); // 1 = casa vence, -1 = fora vence, 0 = empate
+      const realSign = Math.sign(realHome - realAway);
+
+      const isCorrectOutcome = guessSign === realSign;
+
+      if (isExactScore) {
+        return { points: 3, type: "exact" }; // Placar exato (3 pts)
+      } else if (isCorrectOutcome) {
+        return { points: 1, type: "outcome" }; // Vencedor ou empate correto, mas placar diferente (1 pt)
+      }
+
+      return { points: 0, type: "zero" }; // Errou tudo
+    }
   };
+
 
   // Processa a classificação da Fase Final
   const getLeaderboardFinal = (): ParticipantRanking[] => {
@@ -829,11 +856,40 @@ export default function App() {
       let errors = 0;
       let playedCount = 0;
 
+      const userKnockoutMatchesList = getUserKnockoutMatches(name);
+
       knockoutMatches.forEach((match) => {
         const guess = userGuesses[match.id];
         const real = gabarito[match.id];
         
-        const result = calculateMatchPoints(guess, real);
+        let guessWinner = null;
+        const userMatch = userKnockoutMatchesList.find((m) => m.id === match.id);
+        if (userMatch && guess && guess.home !== null && guess.away !== null) {
+          const guessHome = Number(guess.home);
+          const guessAway = Number(guess.away);
+          if (guessHome > guessAway) {
+            guessWinner = userMatch.homeTeam.name;
+          } else if (guessAway > guessHome) {
+            guessWinner = userMatch.awayTeam.name;
+          } else {
+            guessWinner = userGuesses[`WINNER_${match.id}`] || null;
+          }
+        }
+
+        let realWinner = null;
+        if (real && real.home !== null && real.away !== null) {
+          const realHome = Number(real.home);
+          const realAway = Number(real.away);
+          if (realHome > realAway) {
+            realWinner = match.homeTeam.name;
+          } else if (realAway > realHome) {
+            realWinner = match.awayTeam.name;
+          } else {
+            realWinner = gabarito[`WINNER_${match.id}`] || null;
+          }
+        }
+
+        const result = calculateMatchPoints(guess, real, true, guessWinner, realWinner);
         
         if (result.type !== "none") {
           playedCount++;
@@ -1392,7 +1448,6 @@ export default function App() {
       tempGuesses[`MANUAL_LOCKED_${match.id}`] === true ||
       (tempGuesses[`MANUAL_LOCKED_${match.id}`] === undefined && allGuesses[selectedUser]?.[`MANUAL_LOCKED_${match.id}`] === true)
     );
-
     // Palpites liberados até o jogo começar, independentemente de os times estarem definidos ou não.
     const isLocked = type === "gabarito" 
       ? !isAdminAuthenticated 
@@ -1404,11 +1459,6 @@ export default function App() {
       
     const realResult = gabarito[match.id];
     
-    // Para visualização de palpites, calcula pontos se o jogo já aconteceu
-    const pointsResult = type === "palpite" 
-      ? calculateMatchPoints(guess, realResult)
-      : { points: 0, type: "none" };
-
     // Vencedor selecionado (para destaque visual no Flat Design e clonagem)
     const selectedWinner = type === "palpite"
       ? (guess && guess.home !== null && guess.away !== null && Number(guess.home) !== Number(guess.away)
@@ -1419,6 +1469,27 @@ export default function App() {
           ? (Number(guess.home) > Number(guess.away) ? match.homeTeam.name : match.awayTeam.name)
           : (tempGabarito[`WINNER_${match.id}`] || gabarito[`WINNER_${match.id}`] || "")
         );
+
+    // Resolve o vencedor oficial e o previsto para a pontuação
+    const guessWinner = type === "palpite" ? selectedWinner || null : null;
+    const officialMatch = knockoutMatches.find(m => m.id === match.id);
+    let realWinner = null;
+    if (officialMatch && realResult && realResult.home !== null && realResult.away !== null) {
+      const realHome = Number(realResult.home);
+      const realAway = Number(realResult.away);
+      if (realHome > realAway) {
+        realWinner = officialMatch.homeTeam.name;
+      } else if (realAway > realHome) {
+        realWinner = officialMatch.awayTeam.name;
+      } else {
+        realWinner = gabarito[`WINNER_${match.id}`] || null;
+      }
+    }
+
+    // Para visualização de palpites, calcula pontos se o jogo já aconteceu
+    const pointsResult = type === "palpite" 
+      ? calculateMatchPoints(guess, realResult, true, guessWinner, realWinner)
+      : { points: 0, type: "none" };
 
     return (
       <div key={match.id} className={`match-card ${isLocked ? "locked-match" : ""}`} style={{ opacity: isLocked ? 0.9 : 1 }}>
@@ -3594,12 +3665,45 @@ export default function App() {
               points += 5;
             }
 
+            const userKnockoutMatchesList = isFinalPhase ? getUserKnockoutMatches(selectedDetailUser) : [];
+
             const modalMatches = targetMatches.map((match) => {
               if (!isFinalPhase && isMatchExcluded(matchDates[match.id])) return null;
 
               const guess = userGuesses[match.id];
               const real = gabarito[match.id];
-              const result = calculateMatchPoints(guess, real);
+              
+              let guessWinner = null;
+              let realWinner = null;
+
+              if (isFinalPhase) {
+                const userMatch = userKnockoutMatchesList.find((m) => m.id === match.id);
+                if (userMatch && guess && guess.home !== null && guess.away !== null) {
+                  const guessHome = Number(guess.home);
+                  const guessAway = Number(guess.away);
+                  if (guessHome > guessAway) {
+                    guessWinner = userMatch.homeTeam.name;
+                  } else if (guessAway > guessHome) {
+                    guessWinner = userMatch.awayTeam.name;
+                  } else {
+                    guessWinner = userGuesses[`WINNER_${match.id}`] || null;
+                  }
+                }
+
+                if (real && real.home !== null && real.away !== null) {
+                  const realHome = Number(real.home);
+                  const realAway = Number(real.away);
+                  if (realHome > realAway) {
+                    realWinner = match.homeTeam.name;
+                  } else if (realAway > realHome) {
+                    realWinner = match.awayTeam.name;
+                  } else {
+                    realWinner = gabarito[`WINNER_${match.id}`] || null;
+                  }
+                }
+              }
+
+              const result = calculateMatchPoints(guess, real, isFinalPhase, guessWinner, realWinner);
               
               if (result.type !== "none") {
                 playedCount++;
