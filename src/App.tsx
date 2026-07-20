@@ -813,8 +813,6 @@ export default function App() {
     const isExactScore = guessHome === realHome && guessAway === realAway;
 
     if (isKnockout) {
-      const isDraw = realHome === realAway;
-
       if (isExactScore) {
         // Se for empate e placar exato, leva 3 pontos (mesmo errando quem classificou)
         // Se for jogo decidido no tempo normal e placar exato, também leva 3 pontos
