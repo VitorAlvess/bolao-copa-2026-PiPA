@@ -933,7 +933,7 @@ export default function App() {
       };
     });
 
-    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético
+    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético (Invertido)
     return leaderboard.sort((a, b) => {
       if (b.points !== a.points) {
         return b.points - a.points;
@@ -941,7 +941,7 @@ export default function App() {
       if (b.exactScores !== a.exactScores) {
         return b.exactScores - a.exactScores;
       }
-      return a.name.localeCompare(b.name);
+      return b.name.localeCompare(a.name);
     });
   };
 
@@ -989,7 +989,7 @@ export default function App() {
       };
     });
 
-    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético
+    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético (Invertido)
     return leaderboard.sort((a, b) => {
       if (b.points !== a.points) {
         return b.points - a.points;
@@ -997,7 +997,7 @@ export default function App() {
       if (b.exactScores !== a.exactScores) {
         return b.exactScores - a.exactScores;
       }
-      return a.name.localeCompare(b.name);
+      return b.name.localeCompare(a.name);
     });
   };
 
@@ -1022,7 +1022,7 @@ export default function App() {
       };
     });
 
-    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético
+    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético (Invertido)
     return totalLeaderboard.sort((a, b) => {
       if (b.points !== a.points) {
         return b.points - a.points;
@@ -1030,7 +1030,7 @@ export default function App() {
       if (b.exactScores !== a.exactScores) {
         return b.exactScores - a.exactScores;
       }
-      return a.name.localeCompare(b.name);
+      return b.name.localeCompare(a.name);
     });
   };
 
