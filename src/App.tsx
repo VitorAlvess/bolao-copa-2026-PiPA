@@ -26,6 +26,9 @@ import {
   knockoutMatchesConfig,
   allTeamsList
 } from "./data/teams";
+import { getSimulatedLeaderboards } from "./data/simulatedRanking";
+
+const simulatedRanking = getSimulatedLeaderboards(participants);
 
 const getSaoPauloDate = (localDateStr: string, stadiumIdStr: string): string => {
   if (!localDateStr) return "";
@@ -844,195 +847,10 @@ export default function App() {
   };
 
 
-  // Processa a classificação da Fase Final
-  const getLeaderboardFinal = (): ParticipantRanking[] => {
-    const leaderboard: ParticipantRanking[] = participants.map((name) => {
-      const userGuesses = allGuesses[name] || {};
-      let points = 0;
-      let exactScores = 0;
-      let outcomeOnly = 0;
-      let errors = 0;
-      let playedCount = 0;
-
-      const userKnockoutMatchesList = getUserKnockoutMatches(name);
-
-      knockoutMatches.forEach((match) => {
-        const guess = userGuesses[match.id];
-        const real = gabarito[match.id];
-        
-        let guessWinner = null;
-        const userMatch = userKnockoutMatchesList.find((m) => m.id === match.id);
-        if (userMatch && guess && guess.home !== null && guess.away !== null) {
-          const guessHome = Number(guess.home);
-          const guessAway = Number(guess.away);
-          if (guessHome > guessAway) {
-            guessWinner = userMatch.homeTeam.name;
-          } else if (guessAway > guessHome) {
-            guessWinner = userMatch.awayTeam.name;
-          } else {
-            guessWinner = userGuesses[`WINNER_${match.id}`] || null;
-          }
-        }
-
-        let realWinner = null;
-        if (real && real.home !== null && real.away !== null) {
-          const realHome = Number(real.home);
-          const realAway = Number(real.away);
-          if (realHome > realAway) {
-            realWinner = match.homeTeam.name;
-          } else if (realAway > realHome) {
-            realWinner = match.awayTeam.name;
-          } else {
-            realWinner = gabarito[`WINNER_${match.id}`] || null;
-          }
-        }
-
-        const result = calculateMatchPoints(guess, real, true, guessWinner, realWinner);
-        
-        if (result.type !== "none") {
-          playedCount++;
-          points += result.points;
-          if (result.type === "exact") {
-            exactScores++;
-          } else if (result.type === "outcome") {
-            outcomeOnly++;
-          } else if (result.type === "zero") {
-            errors++;
-          }
-        }
-      });
-
-      // Bônus de Campeão (+5 pontos)
-      const userChamp = userGuesses["cup_champion"];
-      const realChamp = gabarito["cup_champion"];
-      if (userChamp && realChamp && userChamp === realChamp) {
-        points += 5;
-      }
-
-      // Bônus de Vice-Campeão (+3 pontos)
-      const userSecond = userGuesses["cup_second"];
-      const realSecond = gabarito["cup_second"];
-      if (userSecond && realSecond && userSecond === realSecond) {
-        points += 3;
-      }
-
-      // Bônus de Terceiro Lugar (+2 pontos)
-      const userThird = userGuesses["cup_third"];
-      const realThird = gabarito["cup_third"];
-      if (userThird && realThird && userThird === realThird) {
-        points += 2;
-      }
-
-      return {
-        name,
-        points,
-        exactScores,
-        outcomeOnly,
-        errors,
-        playedCount
-      };
-    });
-
-    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético (Invertido)
-    return leaderboard.sort((a, b) => {
-      if (b.points !== a.points) {
-        return b.points - a.points;
-      }
-      if (b.exactScores !== a.exactScores) {
-        return b.exactScores - a.exactScores;
-      }
-      return b.name.localeCompare(a.name);
-    });
-  };
-
-  // Processa a classificação da Fase de Grupos
-  const getLeaderboardGroups = (): ParticipantRanking[] => {
-    const leaderboard: ParticipantRanking[] = participants.map((name) => {
-      const userGuesses = allGuesses[name] || {};
-      let points = 0;
-      let exactScores = 0;
-      let outcomeOnly = 0;
-      let errors = 0;
-      let playedCount = 0;
-
-      matchesList.forEach((match) => {
-        // Ignora jogos que ocorreram antes do início oficial do bolão
-        if (isMatchExcluded(matchDates[match.id])) {
-          return;
-        }
-
-        const guess = userGuesses[match.id];
-        const real = gabarito[match.id];
-        
-        const result = calculateMatchPoints(guess, real);
-        
-        if (result.type !== "none") {
-          playedCount++;
-          points += result.points;
-          if (result.type === "exact") {
-            exactScores++;
-          } else if (result.type === "outcome") {
-            outcomeOnly++;
-          } else if (result.type === "zero") {
-            errors++;
-          }
-        }
-      });
-
-      return {
-        name,
-        points,
-        exactScores,
-        outcomeOnly,
-        errors,
-        playedCount
-      };
-    });
-
-    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético (Invertido)
-    return leaderboard.sort((a, b) => {
-      if (b.points !== a.points) {
-        return b.points - a.points;
-      }
-      if (b.exactScores !== a.exactScores) {
-        return b.exactScores - a.exactScores;
-      }
-      return b.name.localeCompare(a.name);
-    });
-  };
-
-  // Processa a classificação Total (Geral) = Grupos + Final
-  const getLeaderboardTotal = () => {
-    const finalLeaderboard = getLeaderboardFinal();
-    const groupsLeaderboard = getLeaderboardGroups();
-    
-    const totalLeaderboard = participants.map((name) => {
-      const finalStats = finalLeaderboard.find(p => p.name === name) || { points: 0, exactScores: 0, outcomeOnly: 0, errors: 0, playedCount: 0 };
-      const groupsStats = groupsLeaderboard.find(p => p.name === name) || { points: 0, exactScores: 0, outcomeOnly: 0, errors: 0, playedCount: 0 };
-      
-      return {
-        name,
-        points: finalStats.points + groupsStats.points,
-        pointsGrupos: groupsStats.points,
-        pointsFinal: finalStats.points,
-        exactScores: finalStats.exactScores + groupsStats.exactScores,
-        outcomeOnly: finalStats.outcomeOnly + groupsStats.outcomeOnly,
-        errors: finalStats.errors + groupsStats.errors,
-        playedCount: finalStats.playedCount + groupsStats.playedCount
-      };
-    });
-
-    // Ordenação: 1º Pontos, 2º Placar Cheio (Desempate), 3º Nome Alfabético (Invertido)
-    return totalLeaderboard.sort((a, b) => {
-      if (b.points !== a.points) {
-        return b.points - a.points;
-      }
-      if (b.exactScores !== a.exactScores) {
-        return b.exactScores - a.exactScores;
-      }
-      return b.name.localeCompare(a.name);
-    });
-  };
+  // Classificação simulada: Zé 100 (1º), Bia 100 (2º), Karen 90, demais aleatório
+  const getLeaderboardFinal = (): ParticipantRanking[] => simulatedRanking.final;
+  const getLeaderboardGroups = (): ParticipantRanking[] => simulatedRanking.groups;
+  const getLeaderboardTotal = () => simulatedRanking.total;
 
   // Trata alteração no palpite do Pódio da Copa (1º, 2º ou 3º lugares)
   const handlePodiumChange = (place: "first" | "second" | "third", teamName: string, type: "palpite" | "gabarito") => {
